@@ -36,7 +36,7 @@
                 onclick="showTab('goleadores')"><span>Goleadores</span></button>
             <button class="tab-btn" data-tab="rojas" onclick="showTab('rojas')"><span>Tarjetas Rojas</span></button>
             <button class="tab-btn" data-tab="fechas" onclick="showTab('fechas')"><span>Fechas</span></button>
-            <button class="tab-btn" data-tab="sorteo" onclick="showTab('sorteo')"><span>Sorteo</span></button>
+            <button class="tab-btn hidden" id="tabSorteoBtn" data-tab="sorteo" onclick="showTab('sorteo')"><span>Sorteo</span></button>
             <button class="tab-btn hidden" id="tabAdminBtn" data-tab="admin"
                 onclick="showTab('admin')"><span>Admin</span></button>
         </nav>    
@@ -145,6 +145,12 @@
       <span class="count" id="fechasViendoLabel"></span>
     </div>
     <p class="subtitle-block">El fixture completo del torneo muestra todas las fechas programadas entre los participantes, con resultados cargados y partidos aún pendientes.</p>
+    <div class="field" style="max-width:320px;">
+      <label>Ver el fixture de</label>
+      <select id="fechasFiltroPersona" onchange="renderFechas()">
+        <option value="">Todos</option>
+      </select>
+    </div>
     <div id="fechasSemanas"></div>
   </section>
 

@@ -5,6 +5,7 @@ const LS_POOL_EQUIPOS = 'pes_pool_equipos';
 const LS_ACTIVE_USER = 'pes_active_user';
 const LS_TORNEO_INICIO = 'pes_torneo_inicio';
 const LS_FIXTURE_FORMATO = 'pes_fixture_formato';
+const RONDAS_POR_SEMANA = 2;
 
 let roster = [];    // [{id, nombre, equipo}]
 let partidos = [];  // [{id, personaAId, personaBId, golesA, golesB, goleadores:[{jugador,personaId,cantidad}], rojas:[{jugador,personaId}]}]
@@ -127,7 +128,7 @@ function showToast(msg){
 
 
 function showTab(name){
-  if(name==='admin' && !isAdmin()){
+  if((name==='admin' || name==='sorteo') && !isAdmin()){
     openLoginModal();
     return;
   }
@@ -187,9 +188,12 @@ function refreshAdminUI(){
   document.getElementById('btnLogout').classList.toggle('hidden', !on);
   document.getElementById('adminPill').classList.toggle('hidden', !on);
   document.getElementById('tabAdminBtn').classList.toggle('hidden', !on);
+  document.getElementById('tabSorteoBtn').classList.toggle('hidden', !on);
   document.getElementById('adminLocked').classList.toggle('hidden', on);
   document.getElementById('adminContent').classList.toggle('hidden', !on);
-  if(!on && document.getElementById('tab-admin').classList.contains('hidden')===false){
+  const tabAdminVisible = document.getElementById('tab-admin').classList.contains('hidden')===false;
+  const tabSorteoVisible = document.getElementById('tab-sorteo').classList.contains('hidden')===false;
+  if(!on && (tabAdminVisible || tabSorteoVisible)){
     showTab('posiciones');
   }
 }
@@ -454,28 +458,36 @@ function refreshUserBar(){
   }
 
   const rondas = calcularRondas();
-  const totalRondas = rondas.length;
-  const idx = Math.min(semanaActualIndex(), Math.max(0, totalRondas - 1));
-  weekInfo.innerHTML = totalRondas > 0
-    ? `Semana actual: <strong>${idx+1}</strong> de ${totalRondas}`
+  const totalSemanas = Math.ceil(rondas.length / RONDAS_POR_SEMANA);
+  const idx = Math.min(semanaActualIndex(), Math.max(0, totalSemanas - 1));
+  weekInfo.innerHTML = totalSemanas > 0
+    ? `Semana actual: <strong>${idx+1}</strong> de ${totalSemanas}`
     : 'No hay rivales suficientes para armar el fixture';
 
-  if(totalRondas === 0){
+  if(totalSemanas === 0){
     banner.classList.add('hidden');
     return;
   }
 
-  const rivalHoyId = rivalEnRonda(rondas, personaId, idx);
-  if(rivalHoyId == null){
+  const rondaInicio = idx * RONDAS_POR_SEMANA;
+  const rondasSemana = [rondaInicio, rondaInicio + 1].filter(i => i < rondas.length);
+  const rivalesSemana = rondasSemana
+    .map(i => ({ ronda: i, rivalId: rivalEnRonda(rondas, personaId, i) }))
+    .filter(x => x.rivalId != null);
+
+  if(rivalesSemana.length === 0){
     banner.className = 'week-banner ok';
     banner.innerHTML = `<span class="icon">🛌</span><span>Esta semana tenés fecha libre.</span>`;
-  } else if(partidoEnRonda(rondas, personaId, idx)){
-    banner.className = 'week-banner ok';
-    banner.innerHTML = `<span class="icon">✅</span><span>¡Ya jugaste tu partido de la Semana ${idx+1}! Nos vemos la semana que viene.</span>`;
   } else {
-    const rival = personaById(rivalHoyId);
-    banner.className = 'week-banner warning';
-    banner.innerHTML = `<span class="icon">⚠️</span><span>No jugaste tu fecha, jugás esta semana contra: <b>${escapeHtml(rival ? rival.nombre : '(eliminado)')}</b></span>`;
+    const pendientes = rivalesSemana.filter(x => !partidoEnRonda(rondas, personaId, x.ronda));
+    if(pendientes.length === 0){
+      banner.className = 'week-banner ok';
+      banner.innerHTML = `<span class="icon">✅</span><span>¡Ya jugaste tus partidos de la Semana ${idx+1}! Nos vemos la semana que viene.</span>`;
+    } else {
+      const nombres = pendientes.map(x => `<b>${escapeHtml(personaNombre(x.rivalId))}</b>`).join(' y ');
+      banner.className = 'week-banner warning';
+      banner.innerHTML = `<span class="icon">⚠️</span><span>No jugaste tus fechas, jugás esta semana contra: ${nombres}</span>`;
+    }
   }
   banner.classList.remove('hidden');
 
@@ -503,6 +515,65 @@ function refreshUserBar(){
 }
 
 
+function renderFilaFixture(idA, idB, rondaIdx){
+  if(idA == null || idB == null){
+    const libre = personaById(idA ?? idB) || { nombre: '(eliminado)' };
+    return `
+      <div class="fixture-row pendiente">
+        <div class="fixture-main" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span>${escapeHtml(libre.nombre)}</span>
+          <span style="color:var(--text-dim);">— fecha libre</span>
+        </div>
+      </div>
+    `;
+  }
+
+  const a = personaById(idA) || { nombre: '(eliminado)', equipo: '—' };
+  const b = personaById(idB) || { nombre: '(eliminado)', equipo: '—' };
+  const partido = partidos.find(m => m.numeroFecha === rondaIdx+1 &&
+    ((m.personaAId===idA && m.personaBId===idB) || (m.personaAId===idB && m.personaBId===idA)));
+
+  if(!partido){
+    return `
+      <div class="fixture-row pendiente">
+        <div class="fixture-main" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span>${escapeHtml(a.nombre)}</span>
+          <span style="color:var(--text-dim);">${escapeHtml(a.equipo)}</span>
+          <span class="resultado-chip" style="background:var(--line); color:var(--text-dim);">0</span>
+          <span>vs</span>
+          <span class="resultado-chip" style="background:var(--line); color:var(--text-dim);">0</span>
+          <span style="color:var(--text-dim);">${escapeHtml(b.equipo)}</span>
+          <span>${escapeHtml(b.nombre)}</span>
+        </div>
+        <span class="resultado-chip" style="background:var(--line); color:var(--text-dim);">Por jugar</span>
+      </div>
+    `;
+  }
+
+  const esA = partido.personaAId === idA;
+  const golesA = esA ? partido.golesA : partido.golesB;
+  const golesB = esA ? partido.golesB : partido.golesA;
+
+  let resultado='Empate'; let chipClass='chip-e';
+  if(golesA > golesB){ resultado='Victoria'; chipClass='chip-v'; }
+  else if(golesA < golesB){ resultado='Derrota'; chipClass='chip-d'; }
+
+  return `
+    <div class="fixture-row jugado">
+      <div class="fixture-main" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span>${escapeHtml(a.nombre)}</span>
+        <span style="color:var(--text-dim);">${escapeHtml(a.equipo)}</span>
+        <span class="resultado-chip ${chipClass}" style="padding:3px 8px; min-width:28px; text-align:center;">${golesA}</span>
+        <span>vs</span>
+        <span class="resultado-chip ${chipClass}" style="padding:3px 8px; min-width:28px; text-align:center;">${golesB}</span>
+        <span style="color:var(--text-dim);">${escapeHtml(b.equipo)}</span>
+        <span>${escapeHtml(b.nombre)}</span>
+      </div>
+      <span class="resultado-chip ${chipClass}">${resultado}</span>
+    </div>
+  `;
+}
+
 function renderFechas(){
   refreshUserBar();
   const cont = document.getElementById('fechasSemanas');
@@ -514,80 +585,41 @@ function renderFechas(){
     return;
   }
 
+  const filtroSel = document.getElementById('fechasFiltroPersona');
+  const filtroPrev = filtroSel.value;
+  filtroSel.innerHTML = `<option value="">Todos</option>` + roster.map(r => `<option value="${r.id}">${escapeHtml(r.nombre)}</option>`).join('');
+  if([...filtroSel.options].some(o => o.value === filtroPrev)) filtroSel.value = filtroPrev;
+  const filtroId = filtroSel.value;
+
   label.textContent = 'Fixture completo';
   const rondas = calcularRondas();
-  const idxActual = Math.min(semanaActualIndex(), Math.max(0, rondas.length - 1));
+  const totalSemanas = Math.ceil(rondas.length / RONDAS_POR_SEMANA);
+  const idxActual = Math.min(semanaActualIndex(), Math.max(0, totalSemanas - 1));
 
   if(rondas.length === 0){
     cont.innerHTML = `<p class="empty-note">Necesitás al menos otra persona en el plantel para armar el fixture.</p>`;
     return;
   }
 
-  cont.innerHTML = rondas.map((ronda, i) => {
-    const esActual = i === idxActual;
-    const filas = ronda.map(([idA, idB]) => {
-      if(idA == null || idB == null){
-        const libre = personaById(idA ?? idB) || { nombre: '(eliminado)' };
-        return `
-          <div class="fixture-row pendiente">
-            <div class="fixture-main" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <span>${escapeHtml(libre.nombre)}</span>
-              <span style="color:var(--text-dim);">— fecha libre</span>
-            </div>
-          </div>
-        `;
-      }
+  cont.innerHTML = Array.from({ length: totalSemanas }, (_, semanaIdx) => {
+    const esActual = semanaIdx === idxActual;
+    const rondaInicio = semanaIdx * RONDAS_POR_SEMANA;
+    const rondasDeEstaSemana = rondas.slice(rondaInicio, rondaInicio + RONDAS_POR_SEMANA);
 
-      const a = personaById(idA) || { nombre: '(eliminado)', equipo: '—' };
-      const b = personaById(idB) || { nombre: '(eliminado)', equipo: '—' };
-      const partido = partidos.find(m => m.numeroFecha === i+1 &&
-        ((m.personaAId===idA && m.personaBId===idB) || (m.personaAId===idB && m.personaBId===idA)));
-
-      if(!partido){
-        return `
-          <div class="fixture-row pendiente">
-            <div class="fixture-main" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <span>${escapeHtml(a.nombre)}</span>
-              <span style="color:var(--text-dim);">${escapeHtml(a.equipo)}</span>
-              <span class="resultado-chip" style="background:var(--line); color:var(--text-dim);">0</span>
-              <span>vs</span>
-              <span class="resultado-chip" style="background:var(--line); color:var(--text-dim);">0</span>
-              <span style="color:var(--text-dim);">${escapeHtml(b.equipo)}</span>
-              <span>${escapeHtml(b.nombre)}</span>
-            </div>
-            <span class="resultado-chip" style="background:var(--line); color:var(--text-dim);">Por jugar</span>
-          </div>
-        `;
-      }
-
-      const esA = partido.personaAId === idA;
-      const golesA = esA ? partido.golesA : partido.golesB;
-      const golesB = esA ? partido.golesB : partido.golesA;
-
-      let resultado='Empate'; let chipClass='chip-e';
-      if(golesA > golesB){ resultado='Victoria'; chipClass='chip-v'; }
-      else if(golesA < golesB){ resultado='Derrota'; chipClass='chip-d'; }
-
-      return `
-        <div class="fixture-row jugado">
-          <div class="fixture-main" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <span>${escapeHtml(a.nombre)}</span>
-            <span style="color:var(--text-dim);">${escapeHtml(a.equipo)}</span>
-            <span class="resultado-chip ${chipClass}" style="padding:3px 8px; min-width:28px; text-align:center;">${golesA}</span>
-            <span>vs</span>
-            <span class="resultado-chip ${chipClass}" style="padding:3px 8px; min-width:28px; text-align:center;">${golesB}</span>
-            <span style="color:var(--text-dim);">${escapeHtml(b.equipo)}</span>
-            <span>${escapeHtml(b.nombre)}</span>
-          </div>
-          <span class="resultado-chip ${chipClass}">${resultado}</span>
-        </div>
-      `;
+    const filas = rondasDeEstaSemana.map((ronda, offset) => {
+      const rondaIdx = rondaInicio + offset;
+      return ronda
+        .filter(([idA, idB]) => !filtroId || idA === filtroId || idB === filtroId)
+        .map(([idA, idB]) => renderFilaFixture(idA, idB, rondaIdx))
+        .join('');
     }).join('');
+
+    if(filtroId && !filas) return '';
 
     return `
       <div class="semana-block ${esActual ? 'actual' : ''}">
         <div class="semana-header">
-          <h4>Semana ${i+1}</h4>
+          <h4>Semana ${semanaIdx+1}</h4>
           ${esActual ? '<span class="semana-tag-actual">Semana Actual</span>' : ''}
         </div>
         ${filas}
