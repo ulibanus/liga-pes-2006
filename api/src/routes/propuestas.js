@@ -39,6 +39,9 @@ router.post('/', async (req, res, next) => {
     if (id_local === id_visitante) {
       return res.status(400).json({ error: 'id_local and id_visitante must differ' });
     }
+    if (!nombre_solicitante || !nombre_solicitante.trim()) {
+      return res.status(400).json({ error: 'nombre_solicitante is required' });
+    }
 
     const goleadoresArr = goleadores ?? [];
     const rojasArr = rojas ?? [];

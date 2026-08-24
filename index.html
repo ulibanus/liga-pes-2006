@@ -161,8 +161,8 @@
     <p class="subtitle-block">¿Jugaste un partido? Cargá el resultado acá — un admin lo va a revisar antes de que se sume a las tablas.</p>
 
     <div class="field">
-      <label>Tu nombre (opcional)</label>
-      <input type="text" id="propNombreSolicitante" placeholder="Para que el admin sepa quién avisó">
+      <label>Tu nombre</label>
+      <input type="text" id="propNombreSolicitante" placeholder="Para que el admin sepa quién avisó" required>
     </div>
 
     <div class="grid-2">
@@ -189,12 +189,12 @@
     <div class="divider"></div>
     <h3 style="color:var(--gold-bright); font-size:20px; margin-bottom:10px;">Goleadores del partido</h3>
     <div id="propGolesRows"></div>
-    <button class="btn btn-ghost btn-sm" onclick="agregarFilaGol('', '', 1, 'propGolesRows')">+ Agregar Goleador</button>
+    <button class="btn btn-ghost btn-sm" onclick="agregarFilaGolProp()">+ Agregar Goleador</button>
 
     <div class="divider"></div>
     <h3 style="color:var(--gold-bright); font-size:20px; margin-bottom:10px;">Tarjetas rojas del partido</h3>
     <div id="propRojasRows"></div>
-    <button class="btn btn-ghost btn-sm" onclick="agregarFilaRoja('', '', 'propRojasRows')">+ Agregar Tarjeta Roja</button>
+    <button class="btn btn-ghost btn-sm" onclick="agregarFilaRojaProp()">+ Agregar Tarjeta Roja</button>
 
     <div class="divider"></div>
     <button class="btn btn-gold" onclick="enviarPropuesta()">📨 Enviar para revisión</button>
@@ -267,12 +267,12 @@
       <div class="divider"></div>
       <h3 style="color:var(--gold-bright); font-size:20px; margin-bottom:10px;">Goleadores del partido</h3>
       <div id="golesRows"></div>
-      <button class="btn btn-ghost btn-sm" onclick="agregarFilaGol()">+ Agregar Goleador</button>
+      <button class="btn btn-ghost btn-sm" onclick="agregarFilaGolAdmin()">+ Agregar Goleador</button>
 
       <div class="divider"></div>
       <h3 style="color:var(--gold-bright); font-size:20px; margin-bottom:10px;">Tarjetas rojas del partido</h3>
       <div id="rojasRows"></div>
-      <button class="btn btn-ghost btn-sm" onclick="agregarFilaRoja()">+ Agregar Tarjeta Roja</button>
+      <button class="btn btn-ghost btn-sm" onclick="agregarFilaRojaAdmin()">+ Agregar Tarjeta Roja</button>
 
       <div class="divider"></div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">

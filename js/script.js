@@ -716,8 +716,9 @@ function renderSorteoResultado(lista){
   `).join('');
 }
 
-function personaOptions(selectedId){
-  return roster.map(r => `<option value="${r.id}" ${r.id===selectedId?'selected':''}>${escapeHtml(r.nombre)} (${escapeHtml(r.equipo)})</option>`).join('');
+function personaOptions(selectedId, allowedIds=null){
+  const lista = allowedIds ? roster.filter(r => allowedIds.includes(r.id)) : roster;
+  return lista.map(r => `<option value="${r.id}" ${r.id===selectedId?'selected':''}>${escapeHtml(r.nombre)} (${escapeHtml(r.equipo)})</option>`).join('');
 }
 
 function renderMatchForm(){
@@ -743,7 +744,20 @@ function renderPropuestaForm(){
   document.getElementById('propNombreSolicitante').value = '';
 }
 
-function agregarFilaGol(jugador='', personaId='', cantidad=1, containerId='golesRows'){
+function agregarFilaGolAdmin(){
+  agregarFilaGol('', '', 1, 'golesRows', [document.getElementById('matchPersonaA').value, document.getElementById('matchPersonaB').value]);
+}
+function agregarFilaRojaAdmin(){
+  agregarFilaRoja('', '', 'rojasRows', [document.getElementById('matchPersonaA').value, document.getElementById('matchPersonaB').value]);
+}
+function agregarFilaGolProp(){
+  agregarFilaGol('', '', 1, 'propGolesRows', [document.getElementById('propPersonaA').value, document.getElementById('propPersonaB').value]);
+}
+function agregarFilaRojaProp(){
+  agregarFilaRoja('', '', 'propRojasRows', [document.getElementById('propPersonaA').value, document.getElementById('propPersonaB').value]);
+}
+
+function agregarFilaGol(jugador='', personaId='', cantidad=1, containerId='golesRows', allowedIds=null){
   const row = document.createElement('div');
   row.className = 'subrow';
   row.innerHTML = `
@@ -753,7 +767,7 @@ function agregarFilaGol(jugador='', personaId='', cantidad=1, containerId='goles
     </div>
     <div class="field" style="margin:0;">
       <label>Persona</label>
-      <select class="gol-persona">${personaOptions(personaId)}</select>
+      <select class="gol-persona">${personaOptions(personaId, allowedIds)}</select>
     </div>
     <div class="field" style="margin:0;">
       <label>Cant.</label>
@@ -764,7 +778,7 @@ function agregarFilaGol(jugador='', personaId='', cantidad=1, containerId='goles
   document.getElementById(containerId).appendChild(row);
 }
 
-function agregarFilaRoja(jugador='', personaId='', containerId='rojasRows'){
+function agregarFilaRoja(jugador='', personaId='', containerId='rojasRows', allowedIds=null){
   const row = document.createElement('div');
   row.className = 'subrow';
   row.style.gridTemplateColumns = '1fr 1fr 34px';
@@ -775,7 +789,7 @@ function agregarFilaRoja(jugador='', personaId='', containerId='rojasRows'){
     </div>
     <div class="field" style="margin:0;">
       <label>Persona</label>
-      <select class="roja-persona">${personaOptions(personaId)}</select>
+      <select class="roja-persona">${personaOptions(personaId, allowedIds)}</select>
     </div>
     <button class="mini-x" onclick="this.closest('.subrow').remove()" title="Eliminar">✕</button>
   `;
@@ -789,9 +803,17 @@ async function enviarPropuesta(){
   const golesB = parseInt(document.getElementById('propGolesB').value || '0', 10);
   const nombreSolicitante = document.getElementById('propNombreSolicitante').value.trim();
 
+  if(!nombreSolicitante){ showToast('Ingresá tu nombre'); return; }
   if(!personaAId || !personaBId){ showToast('Necesitás al menos 2 personas en el plantel'); return; }
   if(personaAId === personaBId){ showToast('Las dos personas deben ser distintas'); return; }
   if(isNaN(golesA) || isNaN(golesB) || golesA < 0 || golesB < 0){ showToast('Revisá los goles cargados'); return; }
+
+  const rondas = calcularRondas();
+  const numero_fecha = proximaRondaLibreParaPar(rondas, personaAId, personaBId);
+  if(numero_fecha === null){
+    showToast('Ese cruce no tiene un partido pendiente en el fixture');
+    return;
+  }
 
   const goleadores = [...document.querySelectorAll('#propGolesRows .subrow')].map(row=>({
     jugador: row.querySelector('.gol-jugador').value.trim(),
@@ -805,11 +827,9 @@ async function enviarPropuesta(){
   })).filter(r => r.jugador.length > 0);
 
   try{
-    const rondas = calcularRondas();
-    const numero_fecha = proximaRondaLibreParaPar(rondas, personaAId, personaBId);
     await apiFetch('/propuestas', {
       method:'POST',
-      body:{ id_local:personaAId, id_visitante:personaBId, goles_local:golesA, goles_visitante:golesB, numero_fecha, goleadores, rojas, nombre_solicitante: nombreSolicitante || null }
+      body:{ id_local:personaAId, id_visitante:personaBId, goles_local:golesA, goles_visitante:golesB, numero_fecha, goleadores, rojas, nombre_solicitante: nombreSolicitante }
     });
     renderPropuestaForm();
     showToast('¡Gracias! Un admin va a revisar tu resultado.');
@@ -834,8 +854,9 @@ function editarPartido(id){
 
   document.getElementById('golesRows').innerHTML = '';
   document.getElementById('rojasRows').innerHTML = '';
-  m.goleadores.forEach(g => agregarFilaGol(g.jugador, g.personaId, g.cantidad));
-  m.rojas.forEach(r => agregarFilaRoja(r.jugador, r.personaId));
+  const permitidosM = [m.personaAId, m.personaBId];
+  m.goleadores.forEach(g => agregarFilaGol(g.jugador, g.personaId, g.cantidad, 'golesRows', permitidosM));
+  m.rojas.forEach(r => agregarFilaRoja(r.jugador, r.personaId, 'rojasRows', permitidosM));
 
   document.getElementById('matchFormTitle').textContent = 'Editar Partido';
   document.getElementById('btnGuardarPartido').textContent = '💾 Actualizar Partido';
@@ -866,8 +887,9 @@ function editarPropuesta(id){
 
   document.getElementById('golesRows').innerHTML = '';
   document.getElementById('rojasRows').innerHTML = '';
-  p.goleadores.forEach(g => agregarFilaGol(g.jugador, String(g.personaId), g.cantidad));
-  p.rojas.forEach(r => agregarFilaRoja(r.jugador, String(r.personaId)));
+  const permitidosP = [idLocal, idVisitante];
+  p.goleadores.forEach(g => agregarFilaGol(g.jugador, String(g.personaId), g.cantidad, 'golesRows', permitidosP));
+  p.rojas.forEach(r => agregarFilaRoja(r.jugador, String(r.personaId), 'rojasRows', permitidosP));
 
   document.getElementById('matchFormTitle').textContent = 'Revisar Solicitud';
   document.getElementById('btnGuardarPartido').textContent = '💾 Aprobar y Guardar';
@@ -956,9 +978,14 @@ async function guardarPartido(){
     return;
   }
 
+  const rondas = calcularRondas();
+  const numero_fecha = proximaRondaLibreParaPar(rondas, personaAId, personaBId);
+  if(numero_fecha === null){
+    showToast('Ese cruce no tiene un partido pendiente en el fixture');
+    return;
+  }
+
   try{
-    const rondas = calcularRondas();
-    const numero_fecha = proximaRondaLibreParaPar(rondas, personaAId, personaBId);
     const nuevo = await apiFetch('/partidos', {
       method:'POST', auth:true,
       body:{ id_local:personaAId, id_visitante:personaBId, goles_local:golesA, goles_visitante:golesB, numero_fecha }
