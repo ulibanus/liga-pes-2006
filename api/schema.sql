@@ -34,3 +34,19 @@ CREATE TABLE IF NOT EXISTS admin (
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL
 );
+
+-- goleadores_json/rojas_json store draft data in the same in-memory shape the
+-- frontend already uses; they only become real incidencia rows on approval.
+CREATE TABLE IF NOT EXISTS propuesta_partido (
+  id_propuesta INTEGER PRIMARY KEY AUTOINCREMENT,
+  id_local INTEGER NOT NULL REFERENCES persona(id_persona),
+  id_visitante INTEGER NOT NULL REFERENCES persona(id_persona),
+  goles_local INTEGER NOT NULL DEFAULT 0,
+  goles_visitante INTEGER NOT NULL DEFAULT 0,
+  numero_fecha INTEGER,
+  goleadores_json TEXT NOT NULL DEFAULT '[]',
+  rojas_json TEXT NOT NULL DEFAULT '[]',
+  nombre_solicitante TEXT,
+  estado TEXT NOT NULL DEFAULT 'pendiente' CHECK(estado IN ('pendiente', 'aprobado', 'rechazado')),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);

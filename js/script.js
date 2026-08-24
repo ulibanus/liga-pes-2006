@@ -11,6 +11,8 @@ let roster = [];    // [{id, nombre, equipo}]
 let partidos = [];  // [{id, personaAId, personaBId, golesA, golesB, goleadores:[{jugador,personaId,cantidad}], rojas:[{jugador,personaId}]}]
 let editandoPartidoId = null;
 let equiposCache = []; // registros crudos {id_equipo, nombre} de la API
+let propuestas = [];
+let editandoDesdePropuestaId = null;
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
@@ -133,12 +135,13 @@ function showTab(name){
     return;
   }
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
-  ['posiciones','goleadores','rojas','fechas','sorteo','admin'].forEach(t=>{
+  ['posiciones','goleadores','rojas','fechas','cargarResultado','sorteo','admin'].forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('hidden', t!==name);
   });
   if(name==='admin'){ renderAdmin(); }
   if(name==='sorteo'){ cargarPoolsEnTextareas(); }
   if(name==='fechas'){ renderFechas(); }
+  if(name==='cargarResultado'){ renderPropuestaForm(); }
 }
 
 
@@ -727,7 +730,20 @@ function renderMatchForm(){
   document.getElementById('rojasRows').innerHTML = '';
 }
 
-function agregarFilaGol(jugador='', personaId='', cantidad=1){
+function renderPropuestaForm(){
+  const selA = document.getElementById('propPersonaA');
+  const selB = document.getElementById('propPersonaB');
+  selA.innerHTML = personaOptions();
+  selB.innerHTML = personaOptions();
+  if(roster.length > 1){ selB.selectedIndex = 1; }
+  document.getElementById('propGolesRows').innerHTML = '';
+  document.getElementById('propRojasRows').innerHTML = '';
+  document.getElementById('propGolesA').value = 0;
+  document.getElementById('propGolesB').value = 0;
+  document.getElementById('propNombreSolicitante').value = '';
+}
+
+function agregarFilaGol(jugador='', personaId='', cantidad=1, containerId='golesRows'){
   const row = document.createElement('div');
   row.className = 'subrow';
   row.innerHTML = `
@@ -745,10 +761,10 @@ function agregarFilaGol(jugador='', personaId='', cantidad=1){
     </div>
     <button class="mini-x" onclick="this.closest('.subrow').remove()" title="Eliminar">✕</button>
   `;
-  document.getElementById('golesRows').appendChild(row);
+  document.getElementById(containerId).appendChild(row);
 }
 
-function agregarFilaRoja(jugador='', personaId=''){
+function agregarFilaRoja(jugador='', personaId='', containerId='rojasRows'){
   const row = document.createElement('div');
   row.className = 'subrow';
   row.style.gridTemplateColumns = '1fr 1fr 34px';
@@ -763,7 +779,43 @@ function agregarFilaRoja(jugador='', personaId=''){
     </div>
     <button class="mini-x" onclick="this.closest('.subrow').remove()" title="Eliminar">✕</button>
   `;
-  document.getElementById('rojasRows').appendChild(row);
+  document.getElementById(containerId).appendChild(row);
+}
+
+async function enviarPropuesta(){
+  const personaAId = document.getElementById('propPersonaA').value;
+  const personaBId = document.getElementById('propPersonaB').value;
+  const golesA = parseInt(document.getElementById('propGolesA').value || '0', 10);
+  const golesB = parseInt(document.getElementById('propGolesB').value || '0', 10);
+  const nombreSolicitante = document.getElementById('propNombreSolicitante').value.trim();
+
+  if(!personaAId || !personaBId){ showToast('Necesitás al menos 2 personas en el plantel'); return; }
+  if(personaAId === personaBId){ showToast('Las dos personas deben ser distintas'); return; }
+  if(isNaN(golesA) || isNaN(golesB) || golesA < 0 || golesB < 0){ showToast('Revisá los goles cargados'); return; }
+
+  const goleadores = [...document.querySelectorAll('#propGolesRows .subrow')].map(row=>({
+    jugador: row.querySelector('.gol-jugador').value.trim(),
+    personaId: row.querySelector('.gol-persona').value,
+    cantidad: parseInt(row.querySelector('.gol-cant').value || '1', 10)
+  })).filter(g => g.jugador.length > 0);
+
+  const rojas = [...document.querySelectorAll('#propRojasRows .subrow')].map(row=>({
+    jugador: row.querySelector('.roja-jugador').value.trim(),
+    personaId: row.querySelector('.roja-persona').value
+  })).filter(r => r.jugador.length > 0);
+
+  try{
+    const rondas = calcularRondas();
+    const numero_fecha = proximaRondaLibreParaPar(rondas, personaAId, personaBId);
+    await apiFetch('/propuestas', {
+      method:'POST',
+      body:{ id_local:personaAId, id_visitante:personaBId, goles_local:golesA, goles_visitante:golesB, numero_fecha, goleadores, rojas, nombre_solicitante: nombreSolicitante || null }
+    });
+    renderPropuestaForm();
+    showToast('¡Gracias! Un admin va a revisar tu resultado.');
+  }catch(err){
+    showToast(err.message);
+  }
 }
 
 function editarPartido(id){
@@ -795,7 +847,40 @@ function editarPartido(id){
   document.getElementById('matchFormTitle').scrollIntoView({behavior:'smooth', block:'start'});
 }
 
+function editarPropuesta(id){
+  const p = propuestas.find(x => x.id_propuesta === id);
+  if(!p){ showToast('No se encontró esa solicitud'); return; }
+
+  editandoDesdePropuestaId = id;
+  editandoPartidoId = null;
+  renderMatchForm();
+
+  const selA = document.getElementById('matchPersonaA');
+  const selB = document.getElementById('matchPersonaB');
+  const idLocal = String(p.id_local);
+  const idVisitante = String(p.id_visitante);
+  if([...selA.options].some(o => o.value === idLocal)) selA.value = idLocal;
+  if([...selB.options].some(o => o.value === idVisitante)) selB.value = idVisitante;
+  document.getElementById('matchGolesA').value = p.goles_local;
+  document.getElementById('matchGolesB').value = p.goles_visitante;
+
+  document.getElementById('golesRows').innerHTML = '';
+  document.getElementById('rojasRows').innerHTML = '';
+  p.goleadores.forEach(g => agregarFilaGol(g.jugador, String(g.personaId), g.cantidad));
+  p.rojas.forEach(r => agregarFilaRoja(r.jugador, String(r.personaId)));
+
+  document.getElementById('matchFormTitle').textContent = 'Revisar Solicitud';
+  document.getElementById('btnGuardarPartido').textContent = '💾 Aprobar y Guardar';
+  document.getElementById('btnCancelarEdicion').classList.remove('hidden');
+  document.getElementById('editBannerText').innerHTML =
+    `Estás revisando una solicitud enviada por <b>${escapeHtml(p.nombre_solicitante || 'alguien anónimo')}</b>. Corregí lo que haga falta y guardá.`;
+  document.getElementById('editBanner').classList.remove('hidden');
+
+  document.getElementById('matchFormTitle').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
 function cancelarEdicionPartido(){
+  editandoDesdePropuestaId = null;
   editandoPartidoId = null;
   renderMatchForm();
   document.getElementById('matchFormTitle').textContent = 'Cargar Resultado de Partido';
@@ -892,6 +977,17 @@ async function guardarPartido(){
         method:'POST', auth:true,
         body:{ jugador_virtual:r.jugador, tipo:'R', id_persona:r.personaId, id_partido:nuevo.id_partido }
       });
+    }
+
+    if(editandoDesdePropuestaId){
+      try{
+        await apiFetch('/propuestas/'+editandoDesdePropuestaId, { method:'DELETE', auth:true });
+      }catch(err){
+        console.error(err);
+      }
+      editandoDesdePropuestaId = null;
+      cancelarEdicionPartido();
+      await renderPropuestas();
     }
 
     await loadState();
@@ -1016,12 +1112,72 @@ async function agregarPersonaRoster(){
 }
 
 
+async function renderPropuestas(){
+  try{
+    propuestas = await apiFetch('/propuestas?estado=pendiente', { auth:true });
+  }catch(err){
+    propuestas = [];
+  }
+  const tbody = document.getElementById('propuestasBody');
+  document.getElementById('propuestasCount').textContent = propuestas.length + ' pendientes';
+  if(propuestas.length === 0){
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-note">No hay solicitudes pendientes.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = propuestas.map(p => {
+    const detalle = [
+      ...p.goleadores.map(g=>`⚽ ${escapeHtml(g.jugador)} (${escapeHtml(personaNombre(String(g.personaId)))}) x${g.cantidad}`),
+      ...p.rojas.map(r=>`🟥 ${escapeHtml(r.jugador)} (${escapeHtml(personaNombre(String(r.personaId)))})`)
+    ].join(' &nbsp;·&nbsp; ') || '—';
+    return `
+      <tr>
+        <td class="left" data-label="Partido">${escapeHtml(personaNombre(String(p.id_local)))} vs ${escapeHtml(personaNombre(String(p.id_visitante)))}</td>
+        <td class="pts-cell" data-label="Resultado">${p.goles_local} - ${p.goles_visitante}</td>
+        <td class="left" style="font-size:13px; color:var(--text-dim); font-weight:500;" data-label="Detalle">${detalle}</td>
+        <td class="left" data-label="Enviado por">${escapeHtml(p.nombre_solicitante || '—')}</td>
+        <td data-label="Acción">
+          <div class="row-actions">
+            <button class="btn btn-gold btn-sm" onclick="aprobarPropuesta(${p.id_propuesta})">Aprobar</button>
+            <button class="btn btn-ghost btn-sm" onclick="editarPropuesta(${p.id_propuesta})">Editar</button>
+            <button class="btn btn-red btn-sm" onclick="rechazarPropuesta(${p.id_propuesta})">Rechazar</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function aprobarPropuesta(id){
+  try{
+    await apiFetch('/propuestas/'+id+'/aprobar', { method:'POST', auth:true });
+    await loadState();
+    renderAll();
+    renderHistorial();
+    await renderPropuestas();
+    showToast('Partido aprobado y sumado a las tablas');
+  }catch(err){
+    showToast(err.message);
+  }
+}
+
+async function rechazarPropuesta(id){
+  if(!confirm('¿Rechazar esta solicitud? No se va a sumar a las tablas.')) return;
+  try{
+    await apiFetch('/propuestas/'+id+'/rechazar', { method:'POST', auth:true });
+    await renderPropuestas();
+    showToast('Solicitud rechazada');
+  }catch(err){
+    showToast(err.message);
+  }
+}
+
 function renderAdmin(){
   refreshAdminUI();
   if(!isAdmin()) return;
-  if(!editandoPartidoId){ renderMatchForm(); }
+  if(!editandoPartidoId && !editandoDesdePropuestaId){ renderMatchForm(); }
   renderHistorial();
   renderRosterEdit();
+  renderPropuestas();
 }
 
 

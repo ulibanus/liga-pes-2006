@@ -5,6 +5,7 @@ import equiposRouter from './routes/equipos.js';
 import personasRouter from './routes/personas.js';
 import partidosRouter from './routes/partidos.js';
 import incidenciasRouter from './routes/incidencias.js';
+import propuestasRouter from './routes/propuestas.js';
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use('/equipos', equiposRouter);
 app.use('/personas', personasRouter);
 app.use('/partidos', partidosRouter);
 app.use('/incidencias', incidenciasRouter);
+app.use('/propuestas', propuestasRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

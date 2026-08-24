@@ -36,6 +36,7 @@
                 onclick="showTab('goleadores')"><span>Goleadores</span></button>
             <button class="tab-btn" data-tab="rojas" onclick="showTab('rojas')"><span>Tarjetas Rojas</span></button>
             <button class="tab-btn" data-tab="fechas" onclick="showTab('fechas')"><span>Fechas</span></button>
+            <button class="tab-btn" data-tab="cargarResultado" onclick="showTab('cargarResultado')"><span>Cargar Resultado</span></button>
             <button class="tab-btn hidden" id="tabSorteoBtn" data-tab="sorteo" onclick="showTab('sorteo')"><span>Sorteo</span></button>
             <button class="tab-btn hidden" id="tabAdminBtn" data-tab="admin"
                 onclick="showTab('admin')"><span>Admin</span></button>
@@ -154,6 +155,50 @@
     <div id="fechasSemanas"></div>
   </section>
 
+  <section id="tab-cargarResultado" class="panel hidden" style="margin-top:22px;">
+    <div class="section-title"><h2>Cargar Resultado de Partido</h2></div>
+    <p class="subtitle-block">¿Jugaste un partido? Cargá el resultado acá — un admin lo va a revisar antes de que se sume a las tablas.</p>
+
+    <div class="field">
+      <label>Tu nombre (opcional)</label>
+      <input type="text" id="propNombreSolicitante" placeholder="Para que el admin sepa quién avisó">
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label>Persona 1</label>
+        <select id="propPersonaA"></select>
+      </div>
+      <div class="field">
+        <label>Persona 2</label>
+        <select id="propPersonaB"></select>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label>Goles Persona 1</label>
+        <input type="number" id="propGolesA" min="0" value="0">
+      </div>
+      <div class="field">
+        <label>Goles Persona 2</label>
+        <input type="number" id="propGolesB" min="0" value="0">
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <h3 style="color:var(--gold-bright); font-size:20px; margin-bottom:10px;">Goleadores del partido</h3>
+    <div id="propGolesRows"></div>
+    <button class="btn btn-ghost btn-sm" onclick="agregarFilaGol('', '', 1, 'propGolesRows')">+ Agregar Goleador</button>
+
+    <div class="divider"></div>
+    <h3 style="color:var(--gold-bright); font-size:20px; margin-bottom:10px;">Tarjetas rojas del partido</h3>
+    <div id="propRojasRows"></div>
+    <button class="btn btn-ghost btn-sm" onclick="agregarFilaRoja('', '', 'propRojasRows')">+ Agregar Tarjeta Roja</button>
+
+    <div class="divider"></div>
+    <button class="btn btn-gold" onclick="enviarPropuesta()">📨 Enviar para revisión</button>
+  </section>
+
   <section id="tab-sorteo" class="panel hidden" style="margin-top:22px;">
     <div class="section-title"><h2>Sorteador de Equipos</h2></div>
     <p class="subtitle-block">Cargá una persona por línea y un equipo por línea. Al sortear, se asigna un equipo al azar a cada persona y ese resultado pasa a ser el plantel oficial de la liga (se usa en Posiciones y en la carga de partidos).</p>
@@ -234,6 +279,15 @@
         <table>
           <thead><tr><th class="left">Partido</th><th>Resultado</th><th class="left">Detalle</th><th>Acción</th></tr></thead>
           <tbody id="historialBody"></tbody>
+        </table>
+      </div>
+
+      <div class="divider"></div>
+      <div class="section-title"><h2>Solicitudes Pendientes</h2><span class="count" id="propuestasCount"></span></div>
+      <div class="table-responsive" style="overflow-x:auto;">
+        <table>
+          <thead><tr><th class="left">Partido</th><th>Resultado</th><th class="left">Detalle</th><th class="left">Enviado por</th><th>Acción</th></tr></thead>
+          <tbody id="propuestasBody"></tbody>
         </table>
       </div>
 
