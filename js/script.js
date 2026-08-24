@@ -641,6 +641,52 @@ function onFixtureFormatoChange(){
   showToast('Formato de fixture actualizado');
 }
 
+let confirmModalCallback = null;
+
+function abrirConfirmModal(mensaje, onConfirm, titulo='Confirmar acción'){
+  document.getElementById('confirmModalTitle').textContent = titulo;
+  document.getElementById('confirmModalMsg').textContent = mensaje;
+  confirmModalCallback = onConfirm;
+  document.getElementById('confirmModal').classList.remove('hidden');
+}
+
+function cerrarConfirmModal(){
+  document.getElementById('confirmModal').classList.add('hidden');
+  confirmModalCallback = null;
+}
+
+function ejecutarConfirmModal(){
+  const cb = confirmModalCallback;
+  cerrarConfirmModal();
+  if(cb) cb();
+}
+
+function confirmarRecargarPlantel(){
+  abrirConfirmModal(
+    'Se van a descartar los cambios sin guardar en Personas y Equipos, y se va a recargar el plantel actual. ¿Continuar?',
+    () => cargarPoolsEnTextareas(),
+    'Recargar plantel'
+  );
+}
+
+function confirmarSorteo(){
+  const personasRaw = document.getElementById('sorteoPersonas').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const equiposRaw = document.getElementById('sorteoEquipos').value.split('\n').map(s=>s.trim()).filter(Boolean);
+
+  if(personasRaw.length === 0 || equiposRaw.length === 0){
+    showToast('Cargá al menos una persona y un equipo'); return;
+  }
+  if(equiposRaw.length < personasRaw.length){
+    showToast('Necesitás al menos tantos equipos como personas'); return;
+  }
+
+  const mensaje = partidos.length > 0
+    ? 'Ya hay partidos cargados en esta liga. Al volver a sortear se arma un plantel nuevo y se REINICIAN todas las estadísticas: Posiciones, Goleadores y Tarjetas Rojas quedarán en 0, y arranca una semana 1 nueva. ¿Continuar?'
+    : '¿Confirmás realizar el sorteo con estas personas y equipos?';
+
+  abrirConfirmModal(mensaje, () => realizarSorteo(), 'Realizar sorteo');
+}
+
 function cargarPoolsEnTextareas(){
   document.getElementById('fixtureFormato').value = localStorage.getItem(LS_FIXTURE_FORMATO) || 'ida';
   const personas = localStorage.getItem(LS_POOL_PERSONAS);
@@ -659,10 +705,6 @@ async function realizarSorteo(){
   }
   if(equiposRaw.length < personasRaw.length){
     showToast('Necesitás al menos tantos equipos como personas'); return;
-  }
-  if(partidos.length > 0){
-    const ok = confirm('Ya hay partidos cargados en esta liga. Al volver a sortear se arma un plantel nuevo y se REINICIAN todas las estadísticas: Posiciones, Goleadores y Tarjetas Rojas quedarán en 0, y arranca una semana 1 nueva. ¿Continuar?');
-    if(!ok) return;
   }
 
   const equiposShuffled = [...equiposRaw];

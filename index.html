@@ -63,6 +63,18 @@
         </form>
     </div>
     </div>
+
+    <div class="modal-overlay hidden" id="confirmModal" onclick="if(event.target===this) cerrarConfirmModal()">
+    <div class="modal-box">
+        <button class="modal-close" onclick="cerrarConfirmModal()" aria-label="Cerrar">✕</button>
+        <h2 id="confirmModalTitle">Confirmar acción</h2>
+        <p class="modal-sub" id="confirmModalMsg"></p>
+        <div style="display:flex; gap:10px; margin-top:8px;">
+            <button class="btn btn-ghost" style="flex:1;" onclick="cerrarConfirmModal()">Cancelar</button>
+            <button class="btn btn-gold" style="flex:1;" onclick="ejecutarConfirmModal()">Confirmar</button>
+        </div>
+    </div>
+    </div>
     <main>
   <section class="panel user-bar" id="userBar">
     <div class="user-bar-inner">
@@ -226,8 +238,8 @@
         <option value="ida_vuelta">Ida y vuelta (cada rival dos veces)</option>
       </select>
     </div>
-    <button class="btn btn-gold" onclick="realizarSorteo()">⚽ Realizar Sorteo</button>
-    <button class="btn btn-ghost" onclick="cargarPoolsEnTextareas()">Recargar plantel actual</button>
+    <button class="btn btn-gold" onclick="confirmarSorteo()">⚽ Realizar Sorteo</button>
+    <button class="btn btn-ghost" onclick="confirmarRecargarPlantel()">Recargar plantel actual</button>
     <div class="sorteo-result" id="sorteoResultado"></div>
   </section>
 
