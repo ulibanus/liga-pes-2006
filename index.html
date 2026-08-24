@@ -37,6 +37,7 @@
             <button class="tab-btn" data-tab="rojas" onclick="showTab('rojas')"><span>Tarjetas Rojas</span></button>
             <button class="tab-btn" data-tab="fechas" onclick="showTab('fechas')"><span>Fechas</span></button>
             <button class="tab-btn" data-tab="cargarResultado" onclick="showTab('cargarResultado')"><span>Cargar Resultado</span></button>
+            <button class="tab-btn" data-tab="vermas" onclick="showTab('vermas')"><span>Ver Más</span></button>
             <button class="tab-btn hidden" id="tabSorteoBtn" data-tab="sorteo" onclick="showTab('sorteo')"><span>Sorteo</span></button>
             <button class="tab-btn hidden" id="tabAdminBtn" data-tab="admin"
                 onclick="showTab('admin')"><span>Admin</span></button>
@@ -197,6 +198,12 @@
 
     <div class="divider"></div>
     <button class="btn btn-gold" onclick="enviarPropuesta()">📨 Enviar para revisión</button>
+  </section>
+
+  <section id="tab-vermas" class="panel hidden" style="margin-top:22px; text-align:center;">
+    <div class="section-title" style="justify-content:center; border-bottom:none;"><h2>👀 Ver Más</h2></div>
+    <img src="imgs/chiqui.jpeg" alt="Chiqui" class="vermas-img">
+    <p class="subtitle-block" style="margin-top:16px;">La verdadera leyenda de la liga.</p>
   </section>
 
   <section id="tab-sorteo" class="panel hidden" style="margin-top:22px;">

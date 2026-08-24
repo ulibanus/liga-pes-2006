@@ -381,3 +381,10 @@
     .brand span.sub{display:none;}
     .brand h1{font-size:20px;}
   }
+
+  /* ===== Ver Más (easter egg) ===== */
+  .vermas-img{
+    max-width:320px; width:100%; border-radius:6px;
+    border:3px solid var(--gold); box-shadow:var(--shadow);
+    margin:0 auto; display:block;
+  }

@@ -135,7 +135,7 @@ function showTab(name){
     return;
   }
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
-  ['posiciones','goleadores','rojas','fechas','cargarResultado','sorteo','admin'].forEach(t=>{
+  ['posiciones','goleadores','rojas','fechas','cargarResultado','vermas','sorteo','admin'].forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('hidden', t!==name);
   });
   if(name==='admin'){ renderAdmin(); }
