@@ -1,5 +1,4 @@
-// TODO: reemplazar por la URL de la API desplegada antes de pasar a producción.
-const API_BASE = 'http://localhost:3001';
+const API_BASE = 'https://liga-pes-2006.onrender.com';
 const LS_TOKEN = 'pes_admin_token';
 const LS_POOL_PERSONAS = 'pes_pool_personas';
 const LS_POOL_EQUIPOS = 'pes_pool_equipos';
