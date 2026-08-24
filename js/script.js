@@ -1,80 +1,118 @@
-const LS_ROSTER = 'pes_roster';
-const LS_PARTIDOS = 'pes_partidos';
+// TODO: reemplazar por la URL de la API desplegada antes de pasar a producción.
+const API_BASE = 'http://localhost:3001';
+const LS_TOKEN = 'pes_admin_token';
 const LS_POOL_PERSONAS = 'pes_pool_personas';
 const LS_POOL_EQUIPOS = 'pes_pool_equipos';
-const LS_ADMIN = 'pes_admin_on';
 const LS_ACTIVE_USER = 'pes_active_user';
 const LS_TORNEO_INICIO = 'pes_torneo_inicio';
+const LS_FIXTURE_FORMATO = 'pes_fixture_formato';
 
 let roster = [];    // [{id, nombre, equipo}]
 let partidos = [];  // [{id, personaAId, personaBId, golesA, golesB, goleadores:[{jugador,personaId,cantidad}], rojas:[{jugador,personaId}]}]
-let editandoPartidoId = null; 
+let editandoPartidoId = null;
+let equiposCache = []; // registros crudos {id_equipo, nombre} de la API
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
-function loadState(){
-  roster = JSON.parse(localStorage.getItem(LS_ROSTER) || 'null');
-  partidos = JSON.parse(localStorage.getItem(LS_PARTIDOS) || 'null');
-  if(roster === null || partidos === null){
-    seedData();
+async function apiFetch(path, { method='GET', body, auth=false } = {}){
+  const headers = { 'Content-Type': 'application/json' };
+  if(auth){ headers.Authorization = 'Bearer ' + localStorage.getItem(LS_TOKEN); }
+  const res = await fetch(API_BASE + path, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined
+  });
+  if(res.status === 401 && auth){
+    logout();
+    throw new Error('Sesión expirada. Iniciá sesión de nuevo.');
   }
-  if(!localStorage.getItem(LS_TORNEO_INICIO)){
-    localStorage.setItem(LS_TORNEO_INICIO, new Date().toISOString());
+  if(!res.ok){
+    let msg = res.statusText;
+    try{
+      const data = await res.json();
+      if(data && data.error) msg = data.error;
+    }catch(e){}
+    throw new Error(msg);
   }
-  if(!localStorage.getItem(LS_ACTIVE_USER) && roster.length > 0){
-    localStorage.setItem(LS_ACTIVE_USER, roster[0].id);
-  }
+  if(res.status === 204) return null;
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
 }
-function saveRoster(){ localStorage.setItem(LS_ROSTER, JSON.stringify(roster)); }
-function savePartidos(){ localStorage.setItem(LS_PARTIDOS, JSON.stringify(partidos)); }
 
+function equipoNombreById(id){
+  const e = equiposCache.find(x => String(x.id_equipo) === String(id));
+  return e ? e.nombre : '';
+}
 
-function seedData(){
-  roster = [
-    {id:'p1', nombre:'Franco', equipo:'Brasil'},
-    {id:'p2', nombre:'Nico',   equipo:'Real Madrid'},
-    {id:'p3', nombre:'Male',   equipo:'AC Milan'},
-    {id:'p4', nombre:'Tobi',   equipo:'Argentina'},
-  ];
-  partidos = [
-    { id:uid(), personaAId:'p1', personaBId:'p2', golesA:3, golesB:1,
-      goleadores:[
-        {jugador:'Adriano', personaId:'p1', cantidad:2},
-        {jugador:'Ronaldinho', personaId:'p1', cantidad:1},
-        {jugador:'Raul', personaId:'p2', cantidad:1},
-      ],
-      rojas:[{jugador:'Zidane', personaId:'p2'}]
-    },
-    { id:uid(), personaAId:'p3', personaBId:'p4', golesA:2, golesB:2,
-      goleadores:[
-        {jugador:'Shevchenko', personaId:'p3', cantidad:2},
-        {jugador:'Crespo', personaId:'p4', cantidad:1},
-        {jugador:'Saviola', personaId:'p4', cantidad:1},
-      ],
-      rojas:[]
-    },
-    { id:uid(), personaAId:'p1', personaBId:'p3', golesA:1, golesB:1,
-      goleadores:[
-        {jugador:'Adriano', personaId:'p1', cantidad:1},
-        {jugador:'Shevchenko', personaId:'p3', cantidad:1},
-      ],
-      rojas:[{jugador:'Cafu', personaId:'p1'}]
-    },
-    { id:uid(), personaAId:'p2', personaBId:'p4', golesA:0, golesB:2,
-      goleadores:[
-        {jugador:'Crespo', personaId:'p4', cantidad:2},
-      ],
-      rojas:[]
-    },
-  ];
-  saveRoster(); savePartidos();
-  localStorage.setItem(LS_POOL_PERSONAS, roster.map(r=>r.nombre).join('\n'));
-  localStorage.setItem(LS_POOL_EQUIPOS, roster.map(r=>r.equipo).join('\n'));
-  // Fecha de inicio de torneo de ejemplo (unos días atrás, para que se note el avance semanal)
-  const demoStart = new Date();
-  demoStart.setDate(demoStart.getDate() - 9);
-  localStorage.setItem(LS_TORNEO_INICIO, demoStart.toISOString());
-  localStorage.setItem(LS_ACTIVE_USER, roster[0].id);
+async function findOrCreateEquipoId(nombre){
+  nombre = nombre.trim();
+  const existing = equiposCache.find(e => e.nombre.trim().toLowerCase() === nombre.toLowerCase());
+  if(existing) return existing.id_equipo;
+  const created = await apiFetch('/equipos', { method:'POST', auth:true, body:{ nombre } });
+  equiposCache.push(created);
+  return created.id_equipo;
+}
+
+async function loadState(){
+  try{
+    const [equipos, personasRaw, partidosRaw, incidenciasRaw] = await Promise.all([
+      apiFetch('/equipos'),
+      apiFetch('/personas'),
+      apiFetch('/partidos'),
+      apiFetch('/incidencias')
+    ]);
+    equiposCache = equipos;
+
+    roster = personasRaw.map(p => ({
+      id: String(p.id_persona),
+      nombre: p.nombre,
+      equipo: equipoNombreById(p.id_equipo)
+    }));
+
+    partidos = partidosRaw.map(m => {
+      const idPartido = String(m.id_partido);
+      const incidenciasDelPartido = incidenciasRaw.filter(i => String(i.id_partido) === idPartido);
+      const goles = incidenciasDelPartido.filter(i => i.tipo === 'G');
+      const rojas = incidenciasDelPartido.filter(i => i.tipo === 'R').map(i => ({
+        jugador: i.jugador_virtual,
+        personaId: String(i.id_persona)
+      }));
+
+      // Cada gol es una fila de incidencia individual (sin columna de cantidad en la API);
+      // se agrupan por jugador+persona para reconstruir el `cantidad` que usa el resto del código.
+      const goleadoresMap = {};
+      goles.forEach(i => {
+        const key = i.jugador_virtual.trim().toLowerCase() + '|' + i.id_persona;
+        if(!goleadoresMap[key]){
+          goleadoresMap[key] = { jugador: i.jugador_virtual, personaId: String(i.id_persona), cantidad: 0 };
+        }
+        goleadoresMap[key].cantidad++;
+      });
+
+      return {
+        id: idPartido,
+        personaAId: String(m.id_local),
+        personaBId: String(m.id_visitante),
+        golesA: m.goles_local,
+        golesB: m.goles_visitante,
+        numeroFecha: m.numero_fecha,
+        goleadores: Object.values(goleadoresMap),
+        rojas
+      };
+    });
+
+    if(!localStorage.getItem(LS_TORNEO_INICIO)){
+      localStorage.setItem(LS_TORNEO_INICIO, new Date().toISOString());
+    }
+    if(!localStorage.getItem(LS_ACTIVE_USER) && roster.length > 0){
+      localStorage.setItem(LS_ACTIVE_USER, roster[0].id);
+    }
+  }catch(err){
+    roster = [];
+    partidos = [];
+    console.error(err);
+    showToast('No se pudo conectar con el servidor');
+  }
 }
 
 
@@ -104,10 +142,7 @@ function showTab(name){
 }
 
 
-const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'pes2006';
-
-function isAdmin(){ return localStorage.getItem(LS_ADMIN) === '1'; }
+function isAdmin(){ return !!localStorage.getItem(LS_TOKEN); }
 
 function openLoginModal(){
   if(isAdmin()) return; // ya logueado, no hace falta
@@ -121,24 +156,27 @@ function closeLoginModal(){
   document.getElementById('loginModal').classList.add('hidden');
 }
 
-function submitLogin(evt){
+async function submitLogin(evt){
   evt.preventDefault();
   const user = document.getElementById('loginUser').value.trim();
   const pass = document.getElementById('loginPass').value;
-  if(user === ADMIN_USER && pass === ADMIN_PASS){
-    localStorage.setItem(LS_ADMIN, '1');
+  try{
+    const data = await apiFetch('/auth/login', { method:'POST', body:{ username:user, password:pass } });
+    localStorage.setItem(LS_TOKEN, data.token);
     closeLoginModal();
+    await loadState();
+    renderAll();
     refreshAdminUI();
     showTab('admin');
     showToast('Sesión de administrador iniciada');
-  } else {
+  }catch(err){
     document.getElementById('loginError').textContent = 'Usuario o contraseña incorrectos.';
   }
   return false;
 }
 
 function logout(){
-  localStorage.setItem(LS_ADMIN, '0');
+  localStorage.removeItem(LS_TOKEN);
   refreshAdminUI();
   showTab('posiciones');
   showToast('Sesión cerrada');
@@ -279,19 +317,6 @@ function getMonday(d){
   return date;
 }
 
-function rivalesOrdenPersona(personaId){
-  return roster.filter(r => r.id !== personaId);
-}
-
-function semanasDePersona(personaId){
-  const rivales = rivalesOrdenPersona(personaId);
-  const semanas = [];
-  for(let i = 0; i < rivales.length; i += 2){
-    semanas.push(rivales.slice(i, i+2));
-  }
-  return semanas;
-}
-
 function semanaActualIndex(){
   const inicioStr = localStorage.getItem(LS_TORNEO_INICIO);
   if(!inicioStr) return 0;
@@ -299,13 +324,6 @@ function semanaActualIndex(){
   const hoyMonday = getMonday(new Date());
   const diffSemanas = Math.round((hoyMonday - inicioMonday) / (7*24*60*60*1000));
   return Math.max(0, diffSemanas);
-}
-
-function yaJugaron(idA, idB){
-  return partidos.some(m =>
-    (m.personaAId === idA && m.personaBId === idB) ||
-    (m.personaAId === idB && m.personaBId === idA)
-  );
 }
 
 function poblarActiveUserSelect(){
@@ -332,6 +350,94 @@ function onActiveUserChange(){
 }
 
 
+function calcularRondas(){
+  const formato = localStorage.getItem(LS_FIXTURE_FORMATO) || 'ida';
+  let ids = roster.map(r => r.id);
+  if(ids.length < 2) return [];
+  if(ids.length % 2 !== 0) ids = [...ids, null];
+  const n = ids.length;
+  let arr = [...ids];
+  const rondas = [];
+  for(let r = 0; r < n - 1; r++){
+    const ronda = [];
+    for(let i = 0; i < n/2; i++){
+      ronda.push([arr[i], arr[n-1-i]]);
+    }
+    rondas.push(ronda);
+    const fijo = arr[0];
+    const resto = arr.slice(1);
+    resto.unshift(resto.pop());
+    arr = [fijo, ...resto];
+  }
+  if(formato === 'ida_vuelta'){
+    const vuelta = rondas.map(ronda => ronda.map(([a,b]) => [b,a]));
+    rondas.push(...vuelta);
+  }
+  return rondas;
+}
+
+function rivalEnRonda(rondas, personaId, rondaIdx){
+  const ronda = rondas[rondaIdx];
+  if(!ronda) return null;
+  const par = ronda.find(([a,b]) => a===personaId || b===personaId);
+  if(!par) return null;
+  return par[0]===personaId ? par[1] : par[0];
+}
+
+// rondaIdx (índice de array, base 0) vs numeroFecha (base 1) — no mezclar sin sumar/restar 1.
+function partidoEnRonda(rondas, personaId, rondaIdx){
+  const rival = rivalEnRonda(rondas, personaId, rondaIdx);
+  if(rival == null) return undefined;
+  return partidos.find(m => m.numeroFecha === rondaIdx+1 &&
+    ((m.personaAId===personaId && m.personaBId===rival) || (m.personaAId===rival && m.personaBId===personaId)));
+}
+
+function proximoPendiente(rondas, personaId){
+  for(let i=0; i<rondas.length; i++){
+    const rival = rivalEnRonda(rondas, personaId, i);
+    if(rival == null) continue;
+    if(!partidoEnRonda(rondas, personaId, i)){
+      return { rivalId: rival, ronda: i };
+    }
+  }
+  return null;
+}
+
+function proximaRondaConRival(rondas, personaId, desdeNumeroFecha){
+  for(let i = desdeNumeroFecha; i < rondas.length; i++){
+    if(rivalEnRonda(rondas, personaId, i) != null) return i;
+  }
+  return null;
+}
+
+function jugadoresSancionadosParaSlot(rondas, personaId, rondaIdx){
+  if(rondaIdx == null) return [];
+  const rival = rivalEnRonda(rondas, personaId, rondaIdx);
+  if(rival == null) return [];
+  if(partidoEnRonda(rondas, personaId, rondaIdx)) return [];
+  const nombres = new Set();
+  partidos.forEach(m => {
+    (m.rojas || []).forEach(r => {
+      if(r.personaId !== personaId) return;
+      if(m.numeroFecha == null) return;
+      const siguienteRonda = proximaRondaConRival(rondas, personaId, m.numeroFecha);
+      if(siguienteRonda === rondaIdx) nombres.add(r.jugador.trim());
+    });
+  });
+  return [...nombres];
+}
+
+function proximaRondaLibreParaPar(rondas, idA, idB){
+  for(let i=0; i<rondas.length; i++){
+    const par = rondas[i].find(([x,y]) => (x===idA && y===idB) || (x===idB && y===idA));
+    if(!par) continue;
+    const yaJugado = partidos.some(m => m.numeroFecha === i+1 &&
+      ((m.personaAId===idA && m.personaBId===idB) || (m.personaAId===idB && m.personaBId===idA)));
+    if(!yaJugado) return i+1;
+  }
+  return null;
+}
+
 function refreshUserBar(){
   const personaId = poblarActiveUserSelect();
   const weekInfo = document.getElementById('weekInfo');
@@ -348,139 +454,55 @@ function refreshUserBar(){
     return;
   }
 
-  const semanas = semanasDePersona(personaId);
-  const totalSemanas = semanas.length;
-  const idx = Math.min(semanaActualIndex(), Math.max(0, totalSemanas - 1));
-  weekInfo.innerHTML = totalSemanas > 0
-    ? `Semana actual: <strong>${idx+1}</strong> de ${totalSemanas}`
+  const rondas = calcularRondas();
+  const totalRondas = rondas.length;
+  const idx = Math.min(semanaActualIndex(), Math.max(0, totalRondas - 1));
+  weekInfo.innerHTML = totalRondas > 0
+    ? `Semana actual: <strong>${idx+1}</strong> de ${totalRondas}`
     : 'No hay rivales suficientes para armar el fixture';
 
-  if(totalSemanas === 0){
+  if(totalRondas === 0){
     banner.classList.add('hidden');
     return;
   }
 
-  const rivalesSemana = semanas[idx] || [];
-  const pendientesSemana = rivalesSemana.filter(r => !yaJugaron(personaId, r.id));
-
-  if(pendientesSemana.length === 0){
+  const rivalHoyId = rivalEnRonda(rondas, personaId, idx);
+  if(rivalHoyId == null){
     banner.className = 'week-banner ok';
-    banner.innerHTML = `<span class="icon">✅</span><span>¡Ya jugaste tus partidos de la Semana ${idx+1}! Nos vemos la semana que viene.</span>`;
+    banner.innerHTML = `<span class="icon">🛌</span><span>Esta semana tenés fecha libre.</span>`;
+  } else if(partidoEnRonda(rondas, personaId, idx)){
+    banner.className = 'week-banner ok';
+    banner.innerHTML = `<span class="icon">✅</span><span>¡Ya jugaste tu partido de la Semana ${idx+1}! Nos vemos la semana que viene.</span>`;
   } else {
-    const nombres = pendientesSemana.map(r => `<b>${escapeHtml(r.nombre)}</b>`).join(' y ');
+    const rival = personaById(rivalHoyId);
     banner.className = 'week-banner warning';
-    banner.innerHTML = `<span class="icon">⚠️</span><span>No jugaste tus fechas, jugás esta semana contra: ${nombres}</span>`;
+    banner.innerHTML = `<span class="icon">⚠️</span><span>No jugaste tu fecha, jugás esta semana contra: <b>${escapeHtml(rival ? rival.nombre : '(eliminado)')}</b></span>`;
   }
   banner.classList.remove('hidden');
 
-  const proximo = proximoPendiente(personaId);
+  const proximo = proximoPendiente(rondas, personaId);
   if(!proximo) return;
 
-  const misSancionados = jugadoresSancionadosParaSlot(personaId, {semana:proximo.semana, pos:proximo.pos});
+  const misSancionados = jugadoresSancionadosParaSlot(rondas, personaId, proximo.ronda);
   if(misSancionados.length > 0){
     const plural = misSancionados.length > 1;
     const nombres = misSancionados.map(n => `<b>${escapeHtml(n)}</b>`).join(', ');
+    const rivalNombre = escapeHtml(personaNombre(proximo.rivalId));
     banPropia.className = 'week-banner sancion';
-    banPropia.innerHTML = `<span class="icon">🟥</span><span>TU EQUIPO: ${nombres} ${plural ? 'están sancionados' : 'está sancionado'} y NO ${plural ? 'pueden' : 'puede'} jugar contra <b>${escapeHtml(proximo.rival.nombre)}</b>.</span>`;
+    banPropia.innerHTML = `<span class="icon">🟥</span><span>TU EQUIPO: ${nombres} ${plural ? 'están sancionados' : 'está sancionado'} y NO ${plural ? 'pueden' : 'puede'} jugar contra <b>${rivalNombre}</b>.</span>`;
     banPropia.classList.remove('hidden');
   }
 
-  const ubicRivalParaEsteCruce = ubicacionEnFixture(proximo.rival.id, personaId);
-  const rivalSancionados = ubicRivalParaEsteCruce ? jugadoresSancionadosParaSlot(proximo.rival.id, ubicRivalParaEsteCruce) : [];
+  const rivalSancionados = jugadoresSancionadosParaSlot(rondas, proximo.rivalId, proximo.ronda);
   if(rivalSancionados.length > 0){
     const nombres = rivalSancionados.map(n => `<b>${escapeHtml(n)}</b>`).join(', ');
+    const rivalNombre = escapeHtml(personaNombre(proximo.rivalId));
     banRival.className = 'week-banner sancion';
-    banRival.innerHTML = `<span class="icon">🚫</span><span>RIVAL SANCIONADO: <b>${escapeHtml(proximo.rival.nombre)}</b> no podrá usar a ${nombres} en este partido por tarjeta roja.</span>`;
+    banRival.innerHTML = `<span class="icon">🚫</span><span>RIVAL SANCIONADO: <b>${rivalNombre}</b> no podrá usar a ${nombres} en este partido por tarjeta roja.</span>`;
     banRival.classList.remove('hidden');
   }
 }
 
-
-
-function ubicacionEnFixture(personaId, rivalId){
-  const semanas = semanasDePersona(personaId);
-  for(let w = 0; w < semanas.length; w++){
-    for(let p = 0; p < semanas[w].length; p++){
-      if(semanas[w][p].id === rivalId) return {semana:w, pos:p};
-    }
-  }
-  return null;
-}
-
-function proximoPendiente(personaId){
-  const semanas = semanasDePersona(personaId);
-  for(let w = 0; w < semanas.length; w++){
-    for(let p = 0; p < semanas[w].length; p++){
-      const rival = semanas[w][p];
-      if(!yaJugaron(personaId, rival.id)){
-        return {rival, semana:w, pos:p};
-      }
-    }
-  }
-  return null;
-}
-
-
-function jugadoresSancionadosParaSlot(personaId, slot){
-  if(!slot) return [];
-  const semanas = semanasDePersona(personaId);
-  const rivalDelSlot = semanas[slot.semana] && semanas[slot.semana][slot.pos];
-  if(!rivalDelSlot) return [];
-  if(yaJugaron(personaId, rivalDelSlot.id)) return []; // ya se jugó ese partido: sanción cumplida
-
-  const nombres = new Set();
-  partidos.forEach(m => {
-    (m.rojas || []).forEach(r => {
-      if(r.personaId !== personaId) return;
-      const rivalDeEsePartido = (m.personaAId === personaId) ? m.personaBId : m.personaAId;
-      const ubic = ubicacionEnFixture(personaId, rivalDeEsePartido);
-      if(!ubic) return;
-      const siguiente = (ubic.pos === 0)
-        ? {semana: ubic.semana, pos: 1}
-        : {semana: ubic.semana + 1, pos: 0};
-      if(siguiente.semana === slot.semana && siguiente.pos === slot.pos){
-        nombres.add(r.jugador.trim());
-      }
-    });
-  });
-  return [...nombres];
-}
-
-
-function generarFixtureCompleto(){
-  if(roster.length < 2) return [];
-
-  const maxSemanas = roster.reduce((max, persona) => {
-    return Math.max(max, semanasDePersona(persona.id).length);
-  }, 0);
-
-  const semanas = [];
-  for(let i = 0; i < maxSemanas; i++){
-    const vistos = new Set();
-    const partidosSemana = [];
-
-    roster.forEach(persona => {
-      const rivales = semanasDePersona(persona.id)[i] || [];
-      rivales.forEach(rival => {
-        const key = [persona.id, rival.id].slice().sort().join('|');
-        if(vistos.has(key)) return;
-        vistos.add(key);
-        partidosSemana.push({ personaAId: persona.id, personaBId: rival.id });
-      });
-    });
-
-    semanas.push(partidosSemana);
-  }
-
-  return semanas;
-}
-
-function partidoEntre(personaAId, personaBId){
-  return partidos.find(m =>
-    (m.personaAId === personaAId && m.personaBId === personaBId) ||
-    (m.personaAId === personaBId && m.personaBId === personaAId)
-  ) || null;
-}
 
 function renderFechas(){
   refreshUserBar();
@@ -494,20 +516,33 @@ function renderFechas(){
   }
 
   label.textContent = 'Fixture completo';
-  const semanas = generarFixtureCompleto();
-  const idxActual = Math.min(semanaActualIndex(), Math.max(0, semanas.length - 1));
+  const rondas = calcularRondas();
+  const idxActual = Math.min(semanaActualIndex(), Math.max(0, rondas.length - 1));
 
-  if(semanas.length === 0){
+  if(rondas.length === 0){
     cont.innerHTML = `<p class="empty-note">Necesitás al menos otra persona en el plantel para armar el fixture.</p>`;
     return;
   }
 
-  cont.innerHTML = semanas.map((partidosSemana, i) => {
+  cont.innerHTML = rondas.map((ronda, i) => {
     const esActual = i === idxActual;
-    const filas = partidosSemana.map(match => {
-      const a = personaById(match.personaAId) || { nombre: '(eliminado)', equipo: '—' };
-      const b = personaById(match.personaBId) || { nombre: '(eliminado)', equipo: '—' };
-      const partido = partidoEntre(match.personaAId, match.personaBId);
+    const filas = ronda.map(([idA, idB]) => {
+      if(idA == null || idB == null){
+        const libre = personaById(idA ?? idB) || { nombre: '(eliminado)' };
+        return `
+          <div class="fixture-row pendiente">
+            <div class="fixture-main" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span>${escapeHtml(libre.nombre)}</span>
+              <span style="color:var(--text-dim);">— fecha libre</span>
+            </div>
+          </div>
+        `;
+      }
+
+      const a = personaById(idA) || { nombre: '(eliminado)', equipo: '—' };
+      const b = personaById(idB) || { nombre: '(eliminado)', equipo: '—' };
+      const partido = partidos.find(m => m.numeroFecha === i+1 &&
+        ((m.personaAId===idA && m.personaBId===idB) || (m.personaAId===idB && m.personaBId===idA)));
 
       if(!partido){
         return `
@@ -526,7 +561,7 @@ function renderFechas(){
         `;
       }
 
-      const esA = partido.personaAId === match.personaAId;
+      const esA = partido.personaAId === idA;
       const golesA = esA ? partido.golesA : partido.golesB;
       const golesB = esA ? partido.golesB : partido.golesA;
 
@@ -563,7 +598,17 @@ function renderFechas(){
 }
 
 
+function onFixtureFormatoChange(){
+  const sel = document.getElementById('fixtureFormato');
+  localStorage.setItem(LS_FIXTURE_FORMATO, sel.value);
+  const tabFechas = document.getElementById('tab-fechas');
+  if(tabFechas && !tabFechas.classList.contains('hidden')){ renderFechas(); }
+  refreshUserBar();
+  showToast('Formato de fixture actualizado');
+}
+
 function cargarPoolsEnTextareas(){
+  document.getElementById('fixtureFormato').value = localStorage.getItem(LS_FIXTURE_FORMATO) || 'ida';
   const personas = localStorage.getItem(LS_POOL_PERSONAS);
   const equipos = localStorage.getItem(LS_POOL_EQUIPOS);
   document.getElementById('sorteoPersonas').value = personas !== null ? personas : roster.map(r=>r.nombre).join('\n');
@@ -571,7 +616,7 @@ function cargarPoolsEnTextareas(){
   renderSorteoResultado(roster);
 }
 
-function realizarSorteo(){
+async function realizarSorteo(){
   const personasRaw = document.getElementById('sorteoPersonas').value.split('\n').map(s=>s.trim()).filter(Boolean);
   const equiposRaw = document.getElementById('sorteoEquipos').value.split('\n').map(s=>s.trim()).filter(Boolean);
 
@@ -592,26 +637,38 @@ function realizarSorteo(){
     [equiposShuffled[i], equiposShuffled[j]] = [equiposShuffled[j], equiposShuffled[i]];
   }
 
-  const nuevoRoster = personasRaw.map((nombre, idx) => ({
-    id: uid(),
-    nombre,
-    equipo: equiposShuffled[idx]
-  }));
+  try{
+    const allIncidencias = await apiFetch('/incidencias');
+    for(const i of allIncidencias){
+      await apiFetch('/incidencias/'+i.id_incidencia, { method:'DELETE', auth:true });
+    }
+    for(const m of partidos){
+      await apiFetch('/partidos/'+m.id, { method:'DELETE', auth:true });
+    }
+    for(const p of roster){
+      await apiFetch('/personas/'+p.id, { method:'DELETE', auth:true });
+    }
 
-  roster = nuevoRoster;
-  saveRoster();
-  localStorage.setItem(LS_POOL_PERSONAS, personasRaw.join('\n'));
-  localStorage.setItem(LS_POOL_EQUIPOS, equiposRaw.join('\n'));
+    for(let idx=0; idx<personasRaw.length; idx++){
+      const id_equipo = await findOrCreateEquipoId(equiposShuffled[idx]);
+      await apiFetch('/personas', { method:'POST', auth:true, body:{ nombre:personasRaw[idx], id_equipo } });
+    }
 
-  partidos = [];
-  savePartidos();
+    localStorage.setItem(LS_POOL_PERSONAS, personasRaw.join('\n'));
+    localStorage.setItem(LS_POOL_EQUIPOS, equiposRaw.join('\n'));
+    localStorage.setItem(LS_TORNEO_INICIO, new Date().toISOString());
 
-  localStorage.setItem(LS_TORNEO_INICIO, new Date().toISOString());
-  localStorage.setItem(LS_ACTIVE_USER, roster[0] ? roster[0].id : '');
+    await loadState();
+    localStorage.setItem(LS_ACTIVE_USER, roster[0] ? roster[0].id : '');
 
-  renderSorteoResultado(roster);
-  renderAll();
-  showToast('¡Sorteo realizado! Estadísticas reiniciadas — arranca la Semana 1.');
+    renderSorteoResultado(roster);
+    renderAll();
+    showToast('¡Sorteo realizado! Estadísticas reiniciadas — arranca la Semana 1.');
+  }catch(err){
+    // Si falla a mitad de camino puede quedar un estado parcialmente borrado;
+    // es una herramienta chica de administración, no hace falta rollback.
+    showToast('Error al realizar el sorteo: ' + err.message);
+  }
 }
 
 function renderSorteoResultado(lista){
@@ -716,7 +773,7 @@ function cancelarEdicionPartido(){
   document.getElementById('editBanner').classList.add('hidden');
 }
 
-function guardarPartido(){
+async function guardarPartido(){
   const personaAId = document.getElementById('matchPersonaA').value;
   const personaBId = document.getElementById('matchPersonaB').value;
   const golesA = parseInt(document.getElementById('matchGolesA').value || '0', 10);
@@ -745,28 +802,74 @@ function guardarPartido(){
   }
 
   if(editandoPartidoId){
-    const idx = partidos.findIndex(p => p.id === editandoPartidoId);
-    if(idx === -1){
-      showToast('El partido que editabas ya no existe');
+    try{
+      const partidoActual = partidos.find(p => p.id === editandoPartidoId);
+      await apiFetch('/partidos/'+editandoPartidoId, {
+        method:'PUT', auth:true,
+        body:{ id_local:personaAId, id_visitante:personaBId, goles_local:golesA, goles_visitante:golesB, numero_fecha: partidoActual ? partidoActual.numeroFecha : null }
+      });
+
+      const old = await apiFetch('/incidencias?id_partido='+editandoPartidoId);
+      for(const i of old){
+        await apiFetch('/incidencias/'+i.id_incidencia, { method:'DELETE', auth:true });
+      }
+
+      for(const g of goleadores){
+        for(let n=0; n<g.cantidad; n++){
+          await apiFetch('/incidencias', {
+            method:'POST', auth:true,
+            body:{ jugador_virtual:g.jugador, tipo:'G', id_persona:g.personaId, id_partido:editandoPartidoId }
+          });
+        }
+      }
+      for(const r of rojas){
+        await apiFetch('/incidencias', {
+          method:'POST', auth:true,
+          body:{ jugador_virtual:r.jugador, tipo:'R', id_persona:r.personaId, id_partido:editandoPartidoId }
+        });
+      }
+
       cancelarEdicionPartido();
-      return;
+      await loadState();
+      renderAll();
+      renderHistorial();
+      showToast('Partido actualizado y tablas recalculadas');
+    }catch(err){
+      showToast(err.message);
     }
-    partidos[idx] = { ...partidos[idx], personaAId, personaBId, golesA, golesB, goleadores, rojas };
-    savePartidos();
-    cancelarEdicionPartido();
-    renderAll();
-    renderHistorial();
-    showToast('Partido actualizado y tablas recalculadas');
     return;
   }
 
-  partidos.push({
-    id: uid(), personaAId, personaBId, golesA, golesB, goleadores, rojas
-  });
-  savePartidos();
-  renderMatchForm();
-  renderAll();
-  showToast('Partido guardado y tablas actualizadas');
+  try{
+    const rondas = calcularRondas();
+    const numero_fecha = proximaRondaLibreParaPar(rondas, personaAId, personaBId);
+    const nuevo = await apiFetch('/partidos', {
+      method:'POST', auth:true,
+      body:{ id_local:personaAId, id_visitante:personaBId, goles_local:golesA, goles_visitante:golesB, numero_fecha }
+    });
+
+    for(const g of goleadores){
+      for(let n=0; n<g.cantidad; n++){
+        await apiFetch('/incidencias', {
+          method:'POST', auth:true,
+          body:{ jugador_virtual:g.jugador, tipo:'G', id_persona:g.personaId, id_partido:nuevo.id_partido }
+        });
+      }
+    }
+    for(const r of rojas){
+      await apiFetch('/incidencias', {
+        method:'POST', auth:true,
+        body:{ jugador_virtual:r.jugador, tipo:'R', id_persona:r.personaId, id_partido:nuevo.id_partido }
+      });
+    }
+
+    await loadState();
+    renderMatchForm();
+    renderAll();
+    showToast('Partido guardado y tablas actualizadas');
+  }catch(err){
+    showToast(err.message);
+  }
 }
 
 function renderHistorial(){
@@ -796,14 +899,22 @@ function renderHistorial(){
   }).join('');
 }
 
-function eliminarPartido(id){
+async function eliminarPartido(id){
   if(!confirm('¿Eliminar este partido? Se recalcularán todas las tablas.')) return;
-  partidos = partidos.filter(m => m.id !== id);
-  savePartidos();
-  if(editandoPartidoId === id){ cancelarEdicionPartido(); }
-  renderAll();
-  renderHistorial();
-  showToast('Partido eliminado');
+  try{
+    const incs = await apiFetch('/incidencias?id_partido='+id);
+    for(const i of incs){
+      await apiFetch('/incidencias/'+i.id_incidencia, { method:'DELETE', auth:true });
+    }
+    await apiFetch('/partidos/'+id, { method:'DELETE', auth:true });
+    if(editandoPartidoId === id){ cancelarEdicionPartido(); }
+    await loadState();
+    renderAll();
+    renderHistorial();
+    showToast('Partido eliminado');
+  }catch(err){
+    showToast(err.message);
+  }
 }
 
 function renderRosterEdit(){
@@ -824,20 +935,24 @@ function renderRosterEdit(){
   `).join('');
 }
 
-function guardarFilaRoster(id){
+async function guardarFilaRoster(id){
   const row = document.querySelector(`.roster-edit-row[data-id="${id}"]`);
   const nombre = row.querySelector('.roster-nombre').value.trim();
   const equipo = row.querySelector('.roster-equipo').value.trim();
   if(!nombre || !equipo){ showToast('Nombre y equipo no pueden estar vacíos'); return; }
-  const p = personaById(id);
-  p.nombre = nombre; p.equipo = equipo;
-  saveRoster();
-  renderAll();
-  renderMatchForm();
-  showToast('Participante actualizado');
+  try{
+    const id_equipo = await findOrCreateEquipoId(equipo);
+    await apiFetch('/personas/'+id, { method:'PUT', auth:true, body:{ nombre, id_equipo } });
+    await loadState();
+    renderAll();
+    renderMatchForm();
+    showToast('Participante actualizado');
+  }catch(err){
+    showToast(err.message);
+  }
 }
 
-function eliminarPersonaRoster(id){
+async function eliminarPersonaRoster(id){
   const p = personaById(id);
   if(!p) return;
   const tienePartidos = partidos.some(m=>m.personaAId===id || m.personaBId===id);
@@ -845,20 +960,28 @@ function eliminarPersonaRoster(id){
     ? `${p.nombre} tiene partidos cargados en el historial. Si lo eliminás, esos partidos van a mostrar "(eliminado)". ¿Continuar?`
     : `¿Eliminar a ${p.nombre} del plantel?`;
   if(!confirm(msg)) return;
-  roster = roster.filter(r => r.id !== id);
-  saveRoster();
-  renderAll();
-  renderRosterEdit();
-  renderMatchForm();
-  showToast('Participante eliminado');
+  try{
+    await apiFetch('/personas/'+id, { method:'DELETE', auth:true });
+    await loadState();
+    renderAll();
+    renderRosterEdit();
+    renderMatchForm();
+    showToast('Participante eliminado');
+  }catch(err){
+    showToast(err.message);
+  }
 }
 
-function agregarPersonaRoster(){
-  roster.push({id:uid(), nombre:'Nuevo Jugador', equipo:'Equipo'});
-  saveRoster();
-  renderRosterEdit();
-  renderMatchForm();
-  renderPosiciones();
+async function agregarPersonaRoster(){
+  try{
+    await apiFetch('/personas', { method:'POST', auth:true, body:{ nombre:'Nuevo Jugador', id_equipo:null } });
+    await loadState();
+    renderRosterEdit();
+    renderMatchForm();
+    renderPosiciones();
+  }catch(err){
+    showToast(err.message);
+  }
 }
 
 
@@ -885,7 +1008,9 @@ function escapeHtml(str){
 }
 function escapeAttr(str){ return escapeHtml(str); }
 
-loadState();
-renderAll();
-refreshAdminUI();
-refreshUserBar();
+(async () => {
+  await loadState();
+  renderAll();
+  refreshAdminUI();
+  refreshUserBar();
+})();

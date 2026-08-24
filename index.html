@@ -161,6 +161,13 @@
         <textarea id="sorteoEquipos" placeholder="Ej: Brasil&#10;Argentina&#10;Real Madrid&#10;AC Milan"></textarea>
       </div>
     </div>
+    <div class="field">
+      <label>Formato de fixture</label>
+      <select id="fixtureFormato" onchange="onFixtureFormatoChange()">
+        <option value="ida">Solo ida (cada rival una vez)</option>
+        <option value="ida_vuelta">Ida y vuelta (cada rival dos veces)</option>
+      </select>
+    </div>
     <button class="btn btn-gold" onclick="realizarSorteo()">⚽ Realizar Sorteo</button>
     <button class="btn btn-ghost" onclick="cargarPoolsEnTextareas()">Recargar plantel actual</button>
     <div class="sorteo-result" id="sorteoResultado"></div>
@@ -232,6 +239,7 @@
     </div>
   </section>
     </main>
+    <div class="toast" id="toast"></div>
     <script src="js/script.js"></script>
 </body>
 </html>
