@@ -47,6 +47,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshTournaments();
   }, [refreshTournaments]);
 

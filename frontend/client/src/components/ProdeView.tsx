@@ -64,24 +64,28 @@ export const ProdeView: React.FC<ProdeViewProps> = ({
         }
       }
       setDraftPreds(initialDrafts);
-    } catch (err: any) {
-      setError(err.message || "Error al cargar la información del Prode");
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : String(err)) || "Error al cargar la información del Prode");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadProdeData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTournament?.id, token]);
 
   // Round filter state: "auto" selects active round with pending matches, or specific round key, or "all"
   const [selectedRoundKey, setSelectedRoundKey] = useState<string>("auto");
   const [filterPendingOnly, setFilterPendingOnly] = useState<boolean>(false);
 
-  useEffect(() => {
+  const [prevTournamentId, setPrevTournamentId] = useState<number | undefined>(undefined);
+  if (activeTournament?.id !== prevTournamentId) {
+    setPrevTournamentId(activeTournament?.id);
     setSelectedRoundKey("auto");
-  }, [activeTournament?.id]);
+  }
 
   // Group matches by round / fecha or stage
   const groupedMatches = useMemo(() => {
@@ -95,7 +99,7 @@ export const ProdeView: React.FC<ProdeViewProps> = ({
     const map = new Map<string, ProdeMatchItem[]>();
 
     for (const m of matches) {
-      let key = m.etapa && m.etapa !== "fecha" ? `Fase: ${m.etapa.toUpperCase()}` : `Fecha ${m.numero_fecha ?? 1}`;
+      const key = m.etapa && m.etapa !== "fecha" ? `Fase: ${m.etapa.toUpperCase()}` : `Fecha ${m.numero_fecha ?? 1}`;
       if (!map.has(key)) {
         map.set(key, []);
       }
@@ -192,8 +196,8 @@ export const ProdeView: React.FC<ProdeViewProps> = ({
       setSaveSuccessMatchId(matchId);
       setTimeout(() => setSaveSuccessMatchId(null), 3000);
       await loadProdeData();
-    } catch (err: any) {
-      alert(err.message || "Error al guardar el pronóstico");
+    } catch (err: unknown) {
+      alert((err instanceof Error ? err.message : String(err)) || "Error al guardar el pronóstico");
     } finally {
       setSavingMatchId(null);
     }
@@ -214,8 +218,8 @@ export const ProdeView: React.FC<ProdeViewProps> = ({
       const res = await generateTorneoFixture(token, activeTournament.id);
       alert(res.message || "Fixture generado exitosamente.");
       await loadProdeData();
-    } catch (err: any) {
-      alert(err.message || "Error al generar fixture");
+    } catch (err: unknown) {
+      alert((err instanceof Error ? err.message : String(err)) || "Error al generar fixture");
     } finally {
       setGeneratingFixture(false);
     }

@@ -210,7 +210,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 const opponentPlayer = allPlayers.find((p) => p.id === oppId);
                 const opponentTeam = opponentPlayer ? allTeams.find((t) => t.id === opponentPlayer.teamId) : null;
 
-                let outcomeBadge: React.ReactNode = null;
+                let outcomeBadge: React.ReactNode;
                 if (m.played && myGoals !== null && oppGoals !== null) {
                   if (myGoals > oppGoals) {
                     outcomeBadge = <span className="outcome-badge win">Victoria</span>;

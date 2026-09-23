@@ -31,6 +31,9 @@ jobs:
         env:
           ADMIN_PASSWORD: testpass123
 
+      - name: Lint codebase
+        run: npm run lint
+
       - name: Run automated tests (Domain & API)
         run: npm test
         env:

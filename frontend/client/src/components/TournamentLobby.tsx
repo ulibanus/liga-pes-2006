@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import type { Tournament } from "../domain/types";
 import { useAuth } from "../context/useAuth";
 import { UserAvatar } from "./UserAvatar";
@@ -26,11 +26,6 @@ export const TournamentLobby: React.FC<TournamentLobbyProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("todos");
   const [currentPage, setCurrentPage] = useState(1);
-
-  // Resetear a página 1 si cambian los filtros de búsqueda o estado
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, statusFilter]);
 
   const counts = useMemo(() => {
     return {
@@ -139,28 +134,28 @@ export const TournamentLobby: React.FC<TournamentLobbyProps> = ({
           <button
             type="button"
             className={`filter-btn ${statusFilter === "todos" ? "active" : ""}`}
-            onClick={() => setStatusFilter("todos")}
+            onClick={() => { setCurrentPage(1); setStatusFilter("todos"); }}
           >
             Todos ({counts.todos})
           </button>
           <button
             type="button"
             className={`filter-btn ${statusFilter === "en_curso" ? "active" : ""}`}
-            onClick={() => setStatusFilter("en_curso")}
+            onClick={() => { setCurrentPage(1); setStatusFilter("en_curso"); }}
           >
             ⚽ En Curso ({counts.en_curso})
           </button>
           <button
             type="button"
             className={`filter-btn ${statusFilter === "borrador" ? "active" : ""}`}
-            onClick={() => setStatusFilter("borrador")}
+            onClick={() => { setCurrentPage(1); setStatusFilter("borrador"); }}
           >
             📝 En Preparación ({counts.borrador})
           </button>
           <button
             type="button"
             className={`filter-btn ${statusFilter === "finalizado" ? "active" : ""}`}
-            onClick={() => setStatusFilter("finalizado")}
+            onClick={() => { setCurrentPage(1); setStatusFilter("finalizado"); }}
           >
             🏆 Finalizados ({counts.finalizado})
           </button>
@@ -172,13 +167,13 @@ export const TournamentLobby: React.FC<TournamentLobbyProps> = ({
             className="lobby-search-input"
             placeholder="Buscar por nombre, juego u organizador..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
           />
           {searchTerm && (
             <button
               type="button"
               className="lobby-search-clear"
-              onClick={() => setSearchTerm("")}
+              onClick={() => { setSearchTerm(""); setCurrentPage(1); }}
               title="Limpiar búsqueda"
             >
               ✕

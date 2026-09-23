@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { fetchTournamentData, iniciarTorneo, type TournamentData } from "./services/api";
 import { useStandings } from "./hooks/useStandings";
 import { useStats } from "./hooks/useStats";
@@ -53,8 +53,11 @@ export function App() {
   const [actionLoading, setActionLoading] = useState(false);
   const [inspectingPlayerId, setInspectingPlayerId] = useState<string | null>(null);
 
+  const [prevTournamentId, setPrevTournamentId] = useState<number | undefined>(undefined);
+
   // Sincronizar formato de fixture y pestaña inicial si el torneo es de eliminación directa
-  useEffect(() => {
+  if (activeTournament?.id !== prevTournamentId) {
+    setPrevTournamentId(activeTournament?.id);
     if (activeTournament?.format === "liga_ida_vuelta") {
       setFixtureFormat("ida_vuelta");
     } else if (activeTournament?.format === "liga_ida") {
@@ -66,7 +69,7 @@ export function App() {
     } else {
       setActiveTab((prev) => (prev === "llaves" ? "posiciones" : prev));
     }
-  }, [activeTournament?.id, activeTournament?.format]);
+  }
 
 
   // Carga reactiva de datos al cambiar el torneo activo
@@ -157,20 +160,17 @@ export function App() {
     fixtureFormat
   );
 
-  const inspectingPlayer = useMemo(() => {
-    if (!inspectingPlayerId || !data?.players) return null;
-    return data.players.find((p) => p.id === inspectingPlayerId) ?? null;
-  }, [inspectingPlayerId, data?.players]);
+  const inspectingPlayer = inspectingPlayerId && data?.players
+    ? data.players.find((p) => p.id === inspectingPlayerId) ?? null
+    : null;
 
-  const inspectingPlayerTeam = useMemo(() => {
-    if (!inspectingPlayer?.teamId || !data?.teams) return null;
-    return data.teams.find((t) => t.id === inspectingPlayer.teamId) ?? null;
-  }, [inspectingPlayer, data?.teams]);
+  const inspectingPlayerTeam = inspectingPlayer?.teamId && data?.teams
+    ? data.teams.find((t) => t.id === inspectingPlayer.teamId) ?? null
+    : null;
 
-  const inspectingPlayerStanding = useMemo(() => {
-    if (!inspectingPlayerId) return null;
-    return standings.find((s) => s.playerId === inspectingPlayerId) ?? null;
-  }, [inspectingPlayerId, standings]);
+  const inspectingPlayerStanding = inspectingPlayerId
+    ? standings.find((s) => s.playerId === inspectingPlayerId) ?? null
+    : null;
 
   return (
     <div className="app-container">

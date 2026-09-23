@@ -25,6 +25,7 @@ export function CreateTournamentModal({ isOpen, onClose, onCreated }: CreateTour
 
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoadingGames(true);
       fetchJuegos()
         .then((data) => {
@@ -61,6 +62,7 @@ export function CreateTournamentModal({ isOpen, onClose, onCreated }: CreateTour
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;

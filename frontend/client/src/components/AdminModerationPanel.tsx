@@ -88,6 +88,7 @@ export function AdminModerationPanel({
   }, [token, logout, tournamentId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
   }, [loadData]);
 
