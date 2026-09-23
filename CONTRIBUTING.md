@@ -14,7 +14,39 @@ Para evitar esfuerzos innecesarios o implementaciones que no se alineen con la v
 
 ---
 
-## 2. Estrategia de Ramas (GitHub Flow)
+## 2. Cómo Empezar (Entorno Local)
+
+Cualquier persona sin acceso de escritura directo al repositorio debe utilizar el modelo **Fork & Pull Request**:
+
+1. **Haz un Fork** del repositorio a tu cuenta personal de GitHub haciendo clic en el botón "Fork" arriba a la derecha.
+2. **Clona tu fork** localmente:
+   ```bash
+   git clone https://github.com/TU-USUARIO/liga-pes-2006.git
+   cd liga-pes-2006
+   ```
+3. **Agrega el repositorio original** como `upstream` para mantenerte actualizado:
+   ```bash
+   git remote add upstream https://github.com/mateoAlonso06/liga-pes-2006.git
+   ```
+4. **Instala las dependencias** desde la raíz del proyecto (usamos npm workspaces):
+   ```bash
+   npm install
+   ```
+5. **Configura el backend** (base de datos local):
+   ```bash
+   cp api/.env.example api/.env
+   # Edita api/.env y asigna un password en ADMIN_PASSWORD. Luego inicializa la BD:
+   npm run db:init --prefix api
+   ```
+6. **Inicia el entorno de desarrollo** en terminales separadas:
+   ```bash
+   npm run dev --prefix api          # Levanta el backend en el puerto 3000
+   npm run dev --prefix frontend/client # Levanta el frontend en el puerto 5173
+   ```
+
+---
+
+## 3. Estrategia de Ramas (GitHub Flow)
 
 El desarrollo se organiza bajo el modelo **GitHub Flow**, manteniendo `main` como rama principal y estable:
 
@@ -33,7 +65,7 @@ El desarrollo se organiza bajo el modelo **GitHub Flow**, manteniendo `main` com
 
 ---
 
-## 3. Alcance y Tamaño de los Pull Requests (Atomic PRs)
+## 4. Alcance y Tamaño de los Pull Requests (Atomic PRs)
 
 Aplicamos el principio de **Responsabilidad Única (SRP)** a las contribuciones:
 
@@ -43,7 +75,7 @@ Aplicamos el principio de **Responsabilidad Única (SRP)** a las contribuciones:
 
 ---
 
-## 4. Estándares Técnicos y Arquitectura
+## 5. Estándares Técnicos y Arquitectura
 
 ### Frontend: Dominio Desacoplado (Clean Architecture)
 - Toda la lógica de negocio, cálculos de tablas, sorteos, fixtures y reglas de validación reside exclusivamente en funciones puras dentro de `frontend/client/src/domain/`.
@@ -56,7 +88,7 @@ Aplicamos el principio de **Responsabilidad Única (SRP)** a las contribuciones:
 
 ---
 
-## 5. Seguridad y Gestión de Secretos
+## 6. Seguridad y Gestión de Secretos
 
 - **Prohibido subir credenciales:** Nunca confirmes archivos `.env`, tokens JWT, llaves privadas ni bases de datos con datos reales en el control de versiones.
 - **Variables de entorno:** Si una nueva funcionalidad requiere una variable de entorno adicional, agrégala con un valor ficticio o descriptivo en `api/.env.example`.
@@ -64,7 +96,7 @@ Aplicamos el principio de **Responsabilidad Única (SRP)** a las contribuciones:
 
 ---
 
-## 6. Estándar de Commits
+## 7. Estándar de Commits
 
 Todos los mensajes de confirmación deben seguir la especificación de **Conventional Commits**:
 
@@ -82,7 +114,7 @@ Ejemplos:
 
 ---
 
-## 7. Criterios de Calidad (Definition of Done)
+## 8. Criterios de Calidad (Definition of Done)
 
 Antes de solicitar la revisión de tu Pull Request, asegúrate de que todos los siguientes pasos se cumplan localmente:
 
@@ -105,7 +137,7 @@ Antes de solicitar la revisión de tu Pull Request, asegúrate de que todos los 
 
 ---
 
-## 8. Checklist del Contribuidor
+## 9. Checklist del Contribuidor
 
 Antes de marcar tu Pull Request como listo para revisión:
 
