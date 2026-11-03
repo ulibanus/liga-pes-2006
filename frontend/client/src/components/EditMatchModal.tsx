@@ -149,20 +149,35 @@ export function EditMatchModal({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal-container"
-        style={{ maxWidth: "600px", width: "95%", maxHeight: "90vh", overflowY: "auto" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h3>✏️ Editar Partido (Fecha {roundNumber})</h3>
-          <button type="button" className="close-btn" onClick={onClose}>
-            &times;
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="modal-box" style={{ maxWidth: "600px", width: "95%" }}>
+        <div className="modal-header-row">
+          <div className="modal-title-wrap">
+            <h2>✏️ Editar Partido (Fecha {roundNumber})</h2>
+            <p className="modal-sub">
+              Modificá el resultado, los autores de los goles y las tarjetas rojas de este encuentro
+            </p>
+          </div>
+          <button
+            type="button"
+            className="modal-close"
+            onClick={onClose}
+            aria-label="Cerrar ventana"
+          >
+            ✕
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="modal-body">
+        <form onSubmit={handleSave} style={{ marginTop: "16px" }}>
           {error && (
             <div className="error-box" style={{ marginBottom: "16px" }}>
               {error}
