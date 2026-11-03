@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { Player, Team, FixtureMatch } from "../domain/types";
-import { updatePartido } from "../services/api";
+import { updatePartido, fetchPlantelEquipo } from "../services/api";
 
 interface EditMatchModalProps {
   match: FixtureMatch;
   roundNumber: number;
   tournamentId?: number;
   token: string;
-  players: Player[];
-  teams: Team[];
+  players?: Player[];
+  teams?: Team[];
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -18,9 +18,34 @@ export function EditMatchModal({
   roundNumber,
   tournamentId,
   token,
+  players = [],
   onClose,
   onSuccess,
-}: Omit<EditMatchModalProps, "players" | "teams">) {
+}: EditMatchModalProps) {
+  const playerMap = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
+  const [rostersByTeam, setRostersByTeam] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    const playerA = match.playerAId ? playerMap.get(match.playerAId) : null;
+    const playerB = match.playerBId ? playerMap.get(match.playerBId) : null;
+
+    const teamIdsToLoad = [playerA?.teamId, playerB?.teamId].filter(
+      (id): id is string => typeof id === "string" && !rostersByTeam[id]
+    );
+
+    for (const tId of teamIdsToLoad) {
+      void fetchPlantelEquipo(tId).then((roster) => {
+        if (roster.length > 0) {
+          setRostersByTeam((prev) => ({ ...prev, [tId]: roster }));
+        }
+      });
+    }
+  }, [match.playerAId, match.playerBId, playerMap, rostersByTeam]);
+
+  const getRosterForPlayer = (playerId: string): string[] => {
+    const p = playerMap.get(playerId);
+    return (p?.teamId && rostersByTeam[p.teamId]) || [];
+  };
 
   const [goalsA, setGoalsA] = useState<number>(match.goalsA ?? 0);
   const [goalsB, setGoalsB] = useState<number>(match.goalsB ?? 0);
@@ -243,59 +268,73 @@ export function EditMatchModal({
               </button>
             </div>
 
-            {scorers.map((s) => (
-              <div key={s.id} style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
-                <select
-                  className="form-select"
-                  style={{ width: "150px" }}
-                  value={s.playerId}
-                  onChange={(e) =>
-                    setScorers((prev) =>
-                      prev.map((item) => (item.id === s.id ? { ...item, playerId: e.target.value } : item))
-                    )
-                  }
-                >
-                  <option value={match.playerAId || ""}>{match.playerAName}</option>
-                  <option value={match.playerBId || ""}>{match.playerBName}</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="Nombre de jugador virtual (ej. Crespo)"
-                  className="form-input"
-                  style={{ flex: 1 }}
-                  value={s.virtualPlayer}
-                  onChange={(e) =>
-                    setScorers((prev) =>
-                      prev.map((item) => (item.id === s.id ? { ...item, virtualPlayer: e.target.value } : item))
-                    )
-                  }
-                  required
-                />
-                <input
-                  type="number"
-                  min="1"
-                  className="form-input"
-                  style={{ width: "65px", textAlign: "center" }}
-                  value={s.amount}
-                  onChange={(e) =>
-                    setScorers((prev) =>
-                      prev.map((item) =>
-                        item.id === s.id ? { ...item, amount: Math.max(1, parseInt(e.target.value, 10) || 1) } : item
+            {scorers.map((s, idx) => {
+              const roster = getRosterForPlayer(s.playerId);
+              const datalistId = `edit-scorer-roster-${s.id}-${idx}`;
+              return (
+                <div key={s.id} style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
+                  <select
+                    className="form-select"
+                    style={{ width: "150px" }}
+                    value={s.playerId}
+                    onChange={(e) =>
+                      setScorers((prev) =>
+                        prev.map((item) => (item.id === s.id ? { ...item, playerId: e.target.value } : item))
                       )
-                    )
-                  }
-                  required
-                />
-                <button
-                  type="button"
-                  className="btn btn-sm btn-danger"
-                  onClick={() => handleRemoveScorer(s.id)}
-                  title="Eliminar goleador"
-                >
-                  &times;
-                </button>
-              </div>
-            ))}
+                    }
+                  >
+                    <option value={match.playerAId || ""}>{match.playerAName}</option>
+                    <option value={match.playerBId || ""}>{match.playerBName}</option>
+                  </select>
+                  <div style={{ flex: 1, position: "relative" }}>
+                    <input
+                      type="text"
+                      list={datalistId}
+                      placeholder={roster.length > 0 ? "Elegí o escribí un jugador..." : "Nombre de jugador virtual (ej. Crespo)"}
+                      className="form-input"
+                      style={{ width: "100%" }}
+                      value={s.virtualPlayer}
+                      onChange={(e) =>
+                        setScorers((prev) =>
+                          prev.map((item) => (item.id === s.id ? { ...item, virtualPlayer: e.target.value } : item))
+                        )
+                      }
+                      required
+                    />
+                    {roster.length > 0 && (
+                      <datalist id={datalistId}>
+                        {roster.map((name, i) => (
+                          <option key={i} value={name} />
+                        ))}
+                      </datalist>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    className="form-input"
+                    style={{ width: "65px", textAlign: "center" }}
+                    value={s.amount}
+                    onChange={(e) =>
+                      setScorers((prev) =>
+                        prev.map((item) =>
+                          item.id === s.id ? { ...item, amount: Math.max(1, parseInt(e.target.value, 10) || 1) } : item
+                        )
+                      )
+                    }
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-danger"
+                    onClick={() => handleRemoveScorer(s.id)}
+                    title="Eliminar goleador"
+                  >
+                    &times;
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
           {/* Tarjetas Rojas */}
@@ -307,44 +346,58 @@ export function EditMatchModal({
               </button>
             </div>
 
-            {redCards.map((r) => (
-              <div key={r.id} style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
-                <select
-                  className="form-select"
-                  style={{ width: "150px" }}
-                  value={r.playerId}
-                  onChange={(e) =>
-                    setRedCards((prev) =>
-                      prev.map((item) => (item.id === r.id ? { ...item, playerId: e.target.value } : item))
-                    )
-                  }
-                >
-                  <option value={match.playerAId || ""}>{match.playerAName}</option>
-                  <option value={match.playerBId || ""}>{match.playerBName}</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="Nombre del expulsado (ej. Samuel)"
-                  className="form-input"
-                  style={{ flex: 1 }}
-                  value={r.virtualPlayer}
-                  onChange={(e) =>
-                    setRedCards((prev) =>
-                      prev.map((item) => (item.id === r.id ? { ...item, virtualPlayer: e.target.value } : item))
-                    )
-                  }
-                  required
-                />
-                <button
-                  type="button"
-                  className="btn btn-sm btn-danger"
-                  onClick={() => handleRemoveRedCard(r.id)}
-                  title="Eliminar expulsión"
-                >
-                  &times;
-                </button>
-              </div>
-            ))}
+            {redCards.map((r, idx) => {
+              const roster = getRosterForPlayer(r.playerId);
+              const datalistId = `edit-red-roster-${r.id}-${idx}`;
+              return (
+                <div key={r.id} style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
+                  <select
+                    className="form-select"
+                    style={{ width: "150px" }}
+                    value={r.playerId}
+                    onChange={(e) =>
+                      setRedCards((prev) =>
+                        prev.map((item) => (item.id === r.id ? { ...item, playerId: e.target.value } : item))
+                      )
+                    }
+                  >
+                    <option value={match.playerAId || ""}>{match.playerAName}</option>
+                    <option value={match.playerBId || ""}>{match.playerBName}</option>
+                  </select>
+                  <div style={{ flex: 1, position: "relative" }}>
+                    <input
+                      type="text"
+                      list={datalistId}
+                      placeholder={roster.length > 0 ? "Elegí o escribí un expulsado..." : "Nombre del expulsado (ej. Samuel)"}
+                      className="form-input"
+                      style={{ width: "100%" }}
+                      value={r.virtualPlayer}
+                      onChange={(e) =>
+                        setRedCards((prev) =>
+                          prev.map((item) => (item.id === r.id ? { ...item, virtualPlayer: e.target.value } : item))
+                        )
+                      }
+                      required
+                    />
+                    {roster.length > 0 && (
+                      <datalist id={datalistId}>
+                        {roster.map((name, i) => (
+                          <option key={i} value={name} />
+                        ))}
+                      </datalist>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-danger"
+                    onClick={() => handleRemoveRedCard(r.id)}
+                    title="Eliminar expulsión"
+                  >
+                    &times;
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
           <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>

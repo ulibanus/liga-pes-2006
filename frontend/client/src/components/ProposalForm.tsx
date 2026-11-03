@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { Player, Team, Match } from "../domain/types";
 import {
   type ProposalFormState,
@@ -10,7 +10,7 @@ import {
   mapProposalInputToPayload,
 } from "../domain/proposals";
 import { getSuspensionsForPlayer } from "../domain/suspensions";
-import { submitProposal, type ProposalDto } from "../services/api";
+import { submitProposal, fetchPlantelEquipo, type ProposalDto } from "../services/api";
 import { UserAvatar } from "./UserAvatar";
 
 interface ProposalFormProps {
@@ -99,6 +99,31 @@ export function ProposalForm({
       : [];
     return [...suspA, ...suspB];
   }, [matches, formState.playerAId, formState.playerBId, activeRoundNumber]);
+
+  // Caché de planteles de clubes para autocompletado y menú desplegable
+  const [rostersByTeam, setRostersByTeam] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    const playerA = playerMap.get(formState.playerAId);
+    const playerB = playerMap.get(formState.playerBId);
+
+    const teamIdsToLoad = [playerA?.teamId, playerB?.teamId].filter(
+      (id): id is string => typeof id === "string" && !rostersByTeam[id]
+    );
+
+    for (const tId of teamIdsToLoad) {
+      void fetchPlantelEquipo(tId).then((roster) => {
+        if (roster.length > 0) {
+          setRostersByTeam((prev) => ({ ...prev, [tId]: roster }));
+        }
+      });
+    }
+  }, [formState.playerAId, formState.playerBId, playerMap, rostersByTeam]);
+
+  const getRosterForPlayer = (playerId: string): string[] => {
+    const p = playerMap.get(playerId);
+    return (p?.teamId && rostersByTeam[p.teamId]) || [];
+  };
 
   const handlePlayerAChange = (newId: string) => {
     setFormState((prev) => {
@@ -569,66 +594,78 @@ export function ProposalForm({
           )}
 
           <div className="subrows-container">
-            {formState.scorers.map((scorer) => (
-              <div key={scorer.id} className="subrow">
-                <div className="subrow-field flex-2">
-                  <label>Jugador Virtual</label>
-                  <input
-                    type="text"
-                    className="form-input form-input-sm"
-                    placeholder="Ej: Adriano"
-                    value={scorer.virtualPlayer}
-                    onChange={(e) =>
-                      handleUpdateScorer(scorer.id, "virtualPlayer", e.target.value)
-                    }
-                    disabled={isSubmitting}
-                  />
-                </div>
+            {formState.scorers.map((scorer) => {
+              const roster = getRosterForPlayer(scorer.playerId);
+              const datalistId = `roster-scorers-${scorer.id}`;
+              return (
+                <div key={scorer.id} className="subrow">
+                  <div className="subrow-field flex-2">
+                    <label>Jugador Virtual</label>
+                    <input
+                      type="text"
+                      list={datalistId}
+                      className="form-input form-input-sm"
+                      placeholder={roster.length > 0 ? "Elegí o escribí un jugador..." : "Ej: Adriano"}
+                      value={scorer.virtualPlayer}
+                      onChange={(e) =>
+                        handleUpdateScorer(scorer.id, "virtualPlayer", e.target.value)
+                      }
+                      disabled={isSubmitting}
+                    />
+                    {roster.length > 0 && (
+                      <datalist id={datalistId}>
+                        {roster.map((name, i) => (
+                          <option key={i} value={name} />
+                        ))}
+                      </datalist>
+                    )}
+                  </div>
 
-                <div className="subrow-field flex-2">
-                  <label>Anotó para</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={scorer.playerId}
-                    onChange={(e) =>
-                      handleUpdateScorer(scorer.id, "playerId", e.target.value)
-                    }
+                  <div className="subrow-field flex-2">
+                    <label>Anotó para</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={scorer.playerId}
+                      onChange={(e) =>
+                        handleUpdateScorer(scorer.id, "playerId", e.target.value)
+                      }
+                      disabled={isSubmitting}
+                    >
+                      <option value={formState.playerAId}>{playerAName}</option>
+                      <option value={formState.playerBId}>{playerBName}</option>
+                    </select>
+                  </div>
+
+                  <div className="subrow-field flex-1">
+                    <label>Cant.</label>
+                    <input
+                      type="number"
+                      min="1"
+                      className="form-input form-input-sm"
+                      value={scorer.amount}
+                      onChange={(e) =>
+                        handleUpdateScorer(
+                          scorer.id,
+                          "amount",
+                          Math.max(1, parseInt(e.target.value || "1", 10))
+                        )
+                      }
+                      disabled={isSubmitting}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-remove-subrow"
+                    onClick={() => handleRemoveScorer(scorer.id)}
+                    title="Eliminar fila"
                     disabled={isSubmitting}
                   >
-                    <option value={formState.playerAId}>{playerAName}</option>
-                    <option value={formState.playerBId}>{playerBName}</option>
-                  </select>
+                    ✕
+                  </button>
                 </div>
-
-                <div className="subrow-field flex-1">
-                  <label>Cant.</label>
-                  <input
-                    type="number"
-                    min="1"
-                    className="form-input form-input-sm"
-                    value={scorer.amount}
-                    onChange={(e) =>
-                      handleUpdateScorer(
-                        scorer.id,
-                        "amount",
-                        Math.max(1, parseInt(e.target.value || "1", 10))
-                      )
-                    }
-                    disabled={isSubmitting}
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-remove-subrow"
-                  onClick={() => handleRemoveScorer(scorer.id)}
-                  title="Eliminar fila"
-                  disabled={isSubmitting}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <button
@@ -657,48 +694,60 @@ export function ProposalForm({
           )}
 
           <div className="subrows-container">
-            {formState.redCards.map((rc) => (
-              <div key={rc.id} className="subrow">
-                <div className="subrow-field flex-3">
-                  <label>Jugador Virtual</label>
-                  <input
-                    type="text"
-                    className="form-input form-input-sm"
-                    placeholder="Ej: Zidane"
-                    value={rc.virtualPlayer}
-                    onChange={(e) =>
-                      handleUpdateRedCard(rc.id, "virtualPlayer", e.target.value)
-                    }
-                    disabled={isSubmitting}
-                  />
-                </div>
+            {formState.redCards.map((rc) => {
+              const roster = getRosterForPlayer(rc.playerId);
+              const datalistId = `roster-redcards-${rc.id}`;
+              return (
+                <div key={rc.id} className="subrow">
+                  <div className="subrow-field flex-3">
+                    <label>Jugador Virtual</label>
+                    <input
+                      type="text"
+                      list={datalistId}
+                      className="form-input form-input-sm"
+                      placeholder={roster.length > 0 ? "Elegí o escribí un jugador..." : "Ej: Zidane"}
+                      value={rc.virtualPlayer}
+                      onChange={(e) =>
+                        handleUpdateRedCard(rc.id, "virtualPlayer", e.target.value)
+                      }
+                      disabled={isSubmitting}
+                    />
+                    {roster.length > 0 && (
+                      <datalist id={datalistId}>
+                        {roster.map((name, i) => (
+                          <option key={i} value={name} />
+                        ))}
+                      </datalist>
+                    )}
+                  </div>
 
-                <div className="subrow-field flex-3">
-                  <label>Expulsado de</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={rc.playerId}
-                    onChange={(e) =>
-                      handleUpdateRedCard(rc.id, "playerId", e.target.value)
-                    }
+                  <div className="subrow-field flex-3">
+                    <label>Expulsado de</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={rc.playerId}
+                      onChange={(e) =>
+                        handleUpdateRedCard(rc.id, "playerId", e.target.value)
+                      }
+                      disabled={isSubmitting}
+                    >
+                      <option value={formState.playerAId}>{playerAName}</option>
+                      <option value={formState.playerBId}>{playerBName}</option>
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-remove-subrow"
+                    onClick={() => handleRemoveRedCard(rc.id)}
+                    title="Eliminar fila"
                     disabled={isSubmitting}
                   >
-                    <option value={formState.playerAId}>{playerAName}</option>
-                    <option value={formState.playerBId}>{playerBName}</option>
-                  </select>
+                    ✕
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  className="btn-remove-subrow"
-                  onClick={() => handleRemoveRedCard(rc.id)}
-                  title="Eliminar fila"
-                  disabled={isSubmitting}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <button

@@ -281,6 +281,17 @@ export async function fetchEquipos(gameId?: number): Promise<Team[]> {
   return data.map(mapEquipoToTeam);
 }
 
+export async function fetchPlantelEquipo(equipoId: number | string): Promise<string[]> {
+  try {
+    const response = await fetch(`${API_BASE}/equipos/${equipoId}/plantel`);
+    if (!response.ok) return [];
+    const data: Array<{ nombre: string }> = await response.json();
+    return data.map((d) => d.nombre);
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchPersonas(): Promise<Player[]> {
   const response = await fetch(`${API_BASE}/personas`);
   if (!response.ok) {

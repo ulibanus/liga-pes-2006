@@ -13,6 +13,15 @@ CREATE TABLE IF NOT EXISTS equipo (
   id_juego INTEGER NULL REFERENCES juego(id_juego)
 );
 
+CREATE TABLE IF NOT EXISTS plantel_jugador (
+  id_plantel_jugador INTEGER PRIMARY KEY AUTOINCREMENT,
+  id_equipo INTEGER NOT NULL REFERENCES equipo(id_equipo) ON DELETE CASCADE,
+  nombre TEXT NOT NULL,
+  dorsal INTEGER NULL,
+  posicion TEXT NULL,
+  UNIQUE(id_equipo, nombre)
+);
+
 CREATE TABLE IF NOT EXISTS persona (
   id_persona INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,

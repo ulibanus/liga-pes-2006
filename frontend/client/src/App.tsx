@@ -657,6 +657,8 @@ export function App() {
           roundNumber={editingMatchData.roundNumber}
           tournamentId={activeTournamentId ?? undefined}
           token={token}
+          players={data?.players ?? []}
+          teams={data?.teams ?? []}
           onClose={() => setEditingMatchData(null)}
           onSuccess={async () => {
             setEditingMatchData(null);
