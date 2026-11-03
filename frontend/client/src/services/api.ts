@@ -447,6 +447,48 @@ export interface ProposalDto {
   creado_en?: string;
 }
 
+export interface UpdatePartidoPayload {
+  goles_local: number;
+  goles_visitante: number;
+  numero_fecha?: number | null;
+  estado?: string;
+  id_local: number;
+  id_visitante: number;
+  id_torneo?: number | null;
+  goleadores?: Array<{
+    jugador: string;
+    personaId: number;
+    cantidad: number;
+  }>;
+  rojas?: Array<{
+    jugador: string;
+    personaId: number;
+  }>;
+}
+
+export async function updatePartido(
+  token: string,
+  id: number | string,
+  payload: UpdatePartidoPayload
+): Promise<PartidoDto> {
+  const response = await fetch(`${API_BASE}/partidos/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    const message = errorData?.error || `Error ${response.status}: ${response.statusText}`;
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
 export async function editarPropuesta(
   token: string,
   id: number,

@@ -11,6 +11,8 @@ interface FixtureViewProps {
   onInspectPlayer?: (playerId: string) => void;
   format: "ida" | "ida_vuelta";
   onChangeFormat: (format: "ida" | "ida_vuelta") => void;
+  canEditMatches?: boolean;
+  onEditMatch?: (match: import("../domain/types").FixtureMatch, roundNumber: number) => void;
 }
 
 export const FixtureView: React.FC<FixtureViewProps> = ({
@@ -21,6 +23,8 @@ export const FixtureView: React.FC<FixtureViewProps> = ({
   onInspectPlayer,
   format,
   onChangeFormat,
+  canEditMatches = false,
+  onEditMatch,
 }) => {
   const startDate = useMemo(() => {
     return localStorage.getItem("pes_torneo_inicio") || undefined;
@@ -224,11 +228,22 @@ export const FixtureView: React.FC<FixtureViewProps> = ({
                             )}
                           </div>
 
-                          <div className="match-status">
+                          <div className="match-status" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             {match.played ? (
                               <span className="chip chip-success">Jugado</span>
                             ) : (
                               <span className="chip chip-muted">Pendiente</span>
+                            )}
+                            {canEditMatches && match.played && onEditMatch && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline"
+                                style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                                onClick={() => onEditMatch(match, round.roundNumber)}
+                                title="Editar resultado de este partido"
+                              >
+                                ✏️ Editar
+                              </button>
                             )}
                           </div>
                         </div>

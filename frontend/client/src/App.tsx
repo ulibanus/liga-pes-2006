@@ -19,6 +19,7 @@ import { TournamentHero } from "./components/TournamentHero";
 import { CreateTournamentModal } from "./components/CreateTournamentModal";
 import { JoinTournamentModal } from "./components/JoinTournamentModal";
 import { PlayerDetailModal } from "./components/PlayerDetailModal";
+import { EditMatchModal } from "./components/EditMatchModal";
 import { Footer } from "./components/Footer";
 import { UserAvatar } from "./components/UserAvatar";
 import { useAuth } from "./context/useAuth";
@@ -52,6 +53,10 @@ export function App() {
   const [fixtureFormat, setFixtureFormat] = useState<"ida" | "ida_vuelta">("ida");
   const [actionLoading, setActionLoading] = useState(false);
   const [inspectingPlayerId, setInspectingPlayerId] = useState<string | null>(null);
+  const [editingMatchData, setEditingMatchData] = useState<{
+    match: import("./domain/types").FixtureMatch;
+    roundNumber: number;
+  } | null>(null);
 
   // Sincronizar formato de fixture y pestaña inicial si el torneo es de eliminación directa
   useEffect(() => {
@@ -497,6 +502,10 @@ export function App() {
                   onInspectPlayer={setInspectingPlayerId}
                   format={fixtureFormat}
                   onChangeFormat={setFixtureFormat}
+                  canEditMatches={isAdmin || canManageActiveTournament}
+                  onEditMatch={(match, roundNumber) => {
+                    setEditingMatchData({ match, roundNumber });
+                  }}
                 />
               )}
 
@@ -641,6 +650,20 @@ export function App() {
         allPlayers={data?.players ?? []}
         allTeams={data?.teams ?? []}
       />
+
+      {editingMatchData && token && (
+        <EditMatchModal
+          match={editingMatchData.match}
+          roundNumber={editingMatchData.roundNumber}
+          tournamentId={activeTournamentId ?? undefined}
+          token={token}
+          onClose={() => setEditingMatchData(null)}
+          onSuccess={async () => {
+            setEditingMatchData(null);
+            await handleRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -139,6 +139,7 @@ export interface RedCardRow {
 }
 
 export interface FixtureMatch {
+  matchId?: string;
   playerAId: string | null;
   playerAName: string;
   teamAName: string;
@@ -153,6 +154,8 @@ export interface FixtureMatch {
   played: boolean;
   goalsA: number | null;
   goalsB: number | null;
+  scorers?: GoalEvent[];
+  redCards?: RedCardEvent[];
   suspendedPlayersA?: string[];
   suspendedPlayersB?: string[];
 }

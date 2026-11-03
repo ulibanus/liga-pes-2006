@@ -110,6 +110,7 @@ export function buildFixture(
       if (playedMatch && playedMatch.played) {
         const isAHome = playedMatch.playerAId === idA;
         roundMatches.push({
+          matchId: playedMatch.id,
           playerAId: idA,
           playerAName: playerA ? playerA.name : "Desconocido",
           teamAName: playerA ? teamMap.get(playerA.teamId) || "Sin Equipo" : "",
@@ -124,6 +125,8 @@ export function buildFixture(
           played: true,
           goalsA: isAHome ? playedMatch.goalsA : playedMatch.goalsB,
           goalsB: isAHome ? playedMatch.goalsB : playedMatch.goalsA,
+          scorers: playedMatch.scorers,
+          redCards: playedMatch.redCards,
         });
       } else {
         const suspendedA = idA ? getSuspensionsForPlayer(matches, idA, roundNumber).map((s) => s.virtualPlayer) : [];
