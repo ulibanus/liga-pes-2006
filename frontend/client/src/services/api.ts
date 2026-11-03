@@ -292,12 +292,40 @@ export async function fetchPersonas(): Promise<Player[]> {
 
 export async function fetchPartidos(torneoId?: number): Promise<Match[]> {
   const url = torneoId ? `${API_BASE}/partidos?id_torneo=${torneoId}` : `${API_BASE}/partidos`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch partidos: ${response.statusText}`);
+  const [partidosRes, incidenciasRes] = await Promise.all([
+    fetch(url),
+    fetch(torneoId ? `${API_BASE}/incidencias?id_torneo=${torneoId}` : `${API_BASE}/incidencias`),
+  ]);
+
+  if (!partidosRes.ok) {
+    throw new Error(`Failed to fetch partidos: ${partidosRes.statusText}`);
   }
-  const data: PartidoDto[] = await response.json();
-  return data.map(mapPartidoToMatch);
+
+  const partidosData: PartidoDto[] = await partidosRes.json();
+  const incidenciasData: IncidenciaDto[] = incidenciasRes.ok ? await incidenciasRes.json() : [];
+
+  return partidosData.map((dto) => {
+    const matchIncidents = incidenciasData.filter((i) => i.id_partido === dto.id_partido);
+    const scorers = matchIncidents
+      .filter((i) => i.tipo === "G")
+      .map((i) => ({
+        scorerName: i.jugador_virtual,
+        playerId: String(i.id_persona),
+        amount: 1,
+      }));
+    const redCards = matchIncidents
+      .filter((i) => i.tipo === "R")
+      .map((i) => ({
+        playerName: i.jugador_virtual,
+        playerId: String(i.id_persona),
+      }));
+
+    return {
+      ...mapPartidoToMatch(dto),
+      scorers,
+      redCards,
+    };
+  });
 }
 
 export async function fetchIncidencias(torneoId?: number): Promise<Incident[]> {
