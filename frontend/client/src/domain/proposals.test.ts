@@ -137,6 +137,17 @@ describe("domain/proposals - validateProposal", () => {
       scorers: [],
       redCards: [{ playerName: "Verón", playerId: "1" }],
     };
+    const pendingMatchRound2: Match = {
+      id: "pend2",
+      playerAId: "1",
+      playerBId: "2",
+      goalsA: null,
+      goalsB: null,
+      played: false,
+      round: 2,
+      scorers: [],
+      redCards: [],
+    };
 
     const state: ProposalFormState = {
       ...baseValidState,
@@ -149,7 +160,7 @@ describe("domain/proposals - validateProposal", () => {
 
     const result = validateProposal(state, {
       availableRounds: [2],
-      matches: [previousMatch],
+      matches: [previousMatch, pendingMatchRound2],
     });
 
     assert.equal(result.isValid, false);
