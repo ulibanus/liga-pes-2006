@@ -6,25 +6,110 @@ const PES6_DIR = '/home/ulises/Games/PES6';
 const FACES_MAP_PATH = path.join(PES6_DIR, 'kitserver/GDB/faces/map.txt');
 
 /**
- * Normaliza nombres de clubes para matching flexible:
- * 'Real Madrid 2000-2002' -> 'real madrid'
- * 'Inter de Milán' -> 'inter'
+ * Normaliza nombres para matching sin tildes ni mayúsculas.
  */
 function normalizeName(str) {
   return str
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, '')
     .trim();
 }
 
+/**
+ * Extrae rango de años desde un encabezado o nombre de equipo:
+ * 'Barcelona 2014-15' -> { start: 2014, end: 2015 }
+ * 'Real Madrid 1956-1960' -> { start: 1956, end: 1960 }
+ * 'Milan 1962-63' -> { start: 1962, end: 1963 }
+ * 'Argentina 2022' -> { start: 2022, end: 2022 }
+ */
+export function parseHeaderYears(header) {
+  const rangeMatch = header.match(/\b(19\d{2}|20\d{2})-(\d{2})\b/);
+  if (rangeMatch) {
+    const start = Number(rangeMatch[1]);
+    const century = Math.floor(start / 100) * 100;
+    const end = century + Number(rangeMatch[2]);
+    return { start, end };
+  }
+  const fullYears = header.match(/\b(19\d{2}|20\d{2})\b/g) || [];
+  if (fullYears.length >= 2) {
+    return { start: Number(fullYears[0]), end: Number(fullYears[1]) };
+  }
+  if (fullYears.length === 1) {
+    return { start: Number(fullYears[0]), end: Number(fullYears[0]) };
+  }
+  return null;
+}
+
+/**
+ * Encuentra el encabezado exacto en PES6 respetando el AÑO del equipo.
+ * Si el equipo es 'Barcelona 2014', devuelve 'Barcelona 2014-15'.
+ * Si el equipo es 'Barcelona 2009', devuelve 'Barcelona 2008-09'.
+ */
+export function findBestHeader(teamName, availableHeaders) {
+  const normTeam = normalizeName(teamName);
+  const teamYears = (normTeam.match(/\b(19\d{2}|20\d{2})\b/g) || []).map(Number);
+
+  // 1. Coincidencia exacta (sin tildes/case)
+  for (const h of availableHeaders) {
+    if (normalizeName(h) === normTeam) return h;
+  }
+
+  // 2. Extraer palabras base clave (sin números/años)
+  const teamBaseWords = normTeam
+    .replace(/\b(19\d{2}|20\d{2}(-\d{2})?)\b/g, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && w !== 'club');
+
+  const candidates = availableHeaders.filter((h) => {
+    const normH = normalizeName(h);
+    // Reglas estrictas para evitar cruces comunes
+    if (normTeam.includes('inter') && !normH.includes('inter')) return false;
+    if (!normTeam.includes('inter') && normH.includes('inter')) return false;
+    if (normTeam.includes('arsenal') && !normH.includes('arsenal')) return false;
+
+    if (teamBaseWords.length > 0) {
+      return teamBaseWords.some((w) => normH.includes(w));
+    }
+    return normH.includes(normTeam) || normTeam.includes(normH);
+  });
+
+  if (candidates.length === 0) return null;
+
+  // 3. Si el equipo especifica un año, encontrar el candidato cuyo rango lo contenga
+  if (teamYears.length > 0) {
+    const ty = teamYears[0];
+    const yearMatch = candidates.find((c) => {
+      const hy = parseHeaderYears(c);
+      if (!hy) return false;
+      return ty >= hy.start && ty <= hy.end;
+    });
+    if (yearMatch) return yearMatch;
+  }
+
+  // 4. Si no se especificó año o no hubo coincidencia directa, ordenar por año más moderno
+  candidates.sort((a, b) => {
+    const ya = parseHeaderYears(a)?.start || 0;
+    const yb = parseHeaderYears(b)?.start || 0;
+    return yb - ya;
+  });
+
+  return candidates[0];
+}
+
+/**
+ * Lee map.txt de kitserver con codificación windows-1252 para respetar acentos y caracteres especiales.
+ */
 export async function parsePES6Rosters() {
   if (!fs.existsSync(FACES_MAP_PATH)) {
     throw new Error(`No se encontró el archivo de rostros en: ${FACES_MAP_PATH}`);
   }
 
-  const content = fs.readFileSync(FACES_MAP_PATH, { encoding: 'latin1' });
+  const raw = fs.readFileSync(FACES_MAP_PATH);
+  const decoder = new TextDecoder('windows-1252');
+  const content = decoder.decode(raw);
   const sections = content.split(/\n#\s+/);
 
   const rosters = new Map();
@@ -32,7 +117,7 @@ export async function parsePES6Rosters() {
   for (const sec of sections.slice(1)) {
     const lines = sec.trim().split('\n');
     const header = lines[0].trim();
-    if (!header || header.startsWith('Map generated') || header.startsWith('Last updated')) {
+    if (!header || header.startsWith('Map generated') || header.startsWith('Last updated') || header.startsWith('Not Affiliated')) {
       continue;
     }
 
@@ -65,8 +150,55 @@ export async function parsePES6Rosters() {
   return rosters;
 }
 
+/**
+ * Sincroniza el plantel para un único equipo en SQLite.
+ * ELIMINA el plantel previo para evitar mezclar jugadores de distintos años/ediciones.
+ */
+export async function syncSingleTeam(teamId) {
+  try {
+    const teamRes = await db.execute({
+      sql: 'SELECT id_equipo, nombre FROM equipo WHERE id_equipo = ?',
+      args: [teamId],
+    });
+    if (teamRes.rows.length === 0) return [];
+    const team = teamRes.rows[0];
+    if (!fs.existsSync(FACES_MAP_PATH)) return [];
+
+    const gameRosters = await parsePES6Rosters();
+    const matchedHeader = findBestHeader(team.nombre, Array.from(gameRosters.keys()));
+    if (!matchedHeader) return [];
+
+    const matchedPlayers = gameRosters.get(matchedHeader) || [];
+    if (matchedPlayers.length === 0) return [];
+
+    // Limpiar plantel anterior para que NUNCA se mezclen jugadores de otros años
+    await db.execute({
+      sql: 'DELETE FROM plantel_jugador WHERE id_equipo = ?',
+      args: [team.id_equipo],
+    });
+
+    for (const p of matchedPlayers) {
+      await db.execute({
+        sql: 'INSERT OR IGNORE INTO plantel_jugador (id_equipo, nombre) VALUES (?, ?)',
+        args: [team.id_equipo, p],
+      });
+    }
+
+    const updated = await db.execute({
+      sql: 'SELECT id_plantel_jugador, nombre, dorsal, posicion FROM plantel_jugador WHERE id_equipo = ? ORDER BY nombre ASC',
+      args: [teamId],
+    });
+    return updated.rows;
+  } catch (err) {
+    console.error('Error sincronizando plantel para equipo', teamId, err);
+    return [];
+  }
+}
+
+/**
+ * Sincroniza los planteles de todos los equipos que estén siendo utilizados en algún torneo o persona.
+ */
 export async function syncUsedTeamRosters() {
-  // Asegurar tabla plantel_jugador
   await db.execute(`
     CREATE TABLE IF NOT EXISTS plantel_jugador (
       id_plantel_jugador INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,7 +210,6 @@ export async function syncUsedTeamRosters() {
     );
   `);
 
-  // Obtener únicamente los equipos que están siendo utilizados en algún torneo o asignados a una persona
   const usedTeamsRes = await db.execute(`
     SELECT DISTINCT e.id_equipo, e.nombre
     FROM equipo e
@@ -98,134 +229,71 @@ export async function syncUsedTeamRosters() {
   let totalInserted = 0;
 
   for (const team of usedTeams) {
-    const targetNorm = normalizeName(team.nombre);
-    if (!targetNorm || targetNorm.startsWith('sync team')) {
+    const matchedHeader = findBestHeader(team.nombre, Array.from(gameRosters.keys()));
+    if (!matchedHeader) {
+      console.log(`⚠️ No se encontró coincidencia directa para el equipo [${team.nombre}]`);
       continue;
     }
 
-    // Priorizar versiones modernas o más completas (ej. 2005-06 / 2006 / 2000-2002)
-    let matchedPlayers = null;
-    let matchedHeader = '';
-    const candidates = [];
-    for (const [header, players] of gameRosters.entries()) {
-      const headerNorm = normalizeName(header);
-      // Evitar que 'Inter de Milán' matchee con 'Milan' solo
-      if (targetNorm.includes('inter') && !headerNorm.includes('inter')) {
-        continue;
+    const matchedPlayers = gameRosters.get(matchedHeader);
+    console.log(`✓ Equipo [${team.nombre}] mapeado exactamente a "${matchedHeader}" (${matchedPlayers.length} jugadores)`);
+
+    // Limpiar previo para no mezclar años
+    await db.execute({
+      sql: 'DELETE FROM plantel_jugador WHERE id_equipo = ?',
+      args: [team.id_equipo],
+    });
+
+    for (const p of matchedPlayers) {
+      try {
+        await db.execute({
+          sql: 'INSERT OR IGNORE INTO plantel_jugador (id_equipo, nombre) VALUES (?, ?)',
+          args: [team.id_equipo, p],
+        });
+        totalInserted++;
+      } catch {
+        // Ignorar duplicados
       }
-      if (!targetNorm.includes('inter') && targetNorm.includes('milan') && headerNorm.includes('inter')) {
-        continue;
-      }
-
-      const keywords = targetNorm.split(/\s+/).filter((w) => w.length > 3 && w !== 'milan' && w !== 'real');
-      const matchesWord = keywords.length > 0
-        ? keywords.some((k) => headerNorm.includes(k))
-        : headerNorm.includes(targetNorm);
-
-      if (matchesWord || headerNorm.includes(targetNorm) || targetNorm.includes(headerNorm)) {
-        candidates.push({ header, players });
-      }
-    }
-
-    if (candidates.length > 0) {
-      // Ordenamos para preferir planteles con 2005-06 o mayor cantidad de jugadores
-      candidates.sort((a, b) => {
-        const aHas2000 = /200[0-9]|201[0-9]/.test(a.header) ? 1 : 0;
-        const bHas2000 = /200[0-9]|201[0-9]/.test(b.header) ? 1 : 0;
-        if (aHas2000 !== bHas2000) return bHas2000 - aHas2000;
-        return b.players.length - a.players.length;
-      });
-
-      matchedPlayers = candidates[0].players;
-      matchedHeader = candidates[0].header;
-    }
-
-    if (matchedPlayers && matchedPlayers.length > 0) {
-      console.log(`✓ Equipo [${team.nombre}] mapeado a PES6 "${matchedHeader}" (${matchedPlayers.length} jugadores)`);
-
-      for (const p of matchedPlayers) {
-        try {
-          await db.execute({
-            sql: `INSERT OR IGNORE INTO plantel_jugador (id_equipo, nombre) VALUES (?, ?)`,
-            args: [team.id_equipo, p],
-          });
-          totalInserted++;
-        } catch (err) {
-          // Ignore duplicates
-        }
-      }
-    } else {
-      console.log(`⚠️ No se encontró coincidencia directa para el equipo [${team.nombre}]`);
     }
   }
 
   console.log(`Sincronización finalizada. Jugadores cargados: ${totalInserted}`);
 }
 
-export async function syncSingleTeam(teamId) {
-  try {
-    const teamRes = await db.execute({
-      sql: 'SELECT id_equipo, nombre FROM equipo WHERE id_equipo = ?',
-      args: [teamId],
+/**
+ * Carga todos los 203 equipos reales del parche PES 6 en la tabla 'equipo'
+ * para que cada uno sea un club distinto con su año específico.
+ */
+export async function populateAllPES6Teams(idJuego = 1) {
+  if (!fs.existsSync(FACES_MAP_PATH)) return 0;
+  const gameRosters = await parsePES6Rosters();
+  let createdCount = 0;
+
+  for (const header of gameRosters.keys()) {
+    const res = await db.execute({
+      sql: 'SELECT id_equipo FROM equipo WHERE nombre = ? AND (id_juego = ? OR id_juego IS NULL)',
+      args: [header, idJuego],
     });
-    if (teamRes.rows.length === 0) return [];
-    const team = teamRes.rows[0];
-    if (!fs.existsSync(FACES_MAP_PATH)) return [];
-
-    const gameRosters = await parsePES6Rosters();
-    const targetNorm = normalizeName(team.nombre);
-    if (!targetNorm) return [];
-
-    const candidates = [];
-    for (const [header, players] of gameRosters.entries()) {
-      const headerNorm = normalizeName(header);
-      if (targetNorm.includes('inter') && !headerNorm.includes('inter')) continue;
-      if (!targetNorm.includes('inter') && targetNorm.includes('milan') && headerNorm.includes('inter')) continue;
-
-      const keywords = targetNorm.split(/\s+/).filter((w) => w.length > 3 && w !== 'milan' && w !== 'real');
-      const matchesWord = keywords.length > 0
-        ? keywords.some((k) => headerNorm.includes(k))
-        : headerNorm.includes(targetNorm);
-
-      if (matchesWord || headerNorm.includes(targetNorm) || targetNorm.includes(headerNorm)) {
-        candidates.push({ header, players });
-      }
-    }
-
-    if (candidates.length === 0) return [];
-
-    candidates.sort((a, b) => {
-      const aHas2000 = /200[0-9]|201[0-9]/.test(a.header) ? 1 : 0;
-      const bHas2000 = /200[0-9]|201[0-9]/.test(b.header) ? 1 : 0;
-      if (aHas2000 !== bHas2000) return bHas2000 - aHas2000;
-      return b.players.length - a.players.length;
-    });
-
-    const matchedPlayers = candidates[0].players;
-    for (const p of matchedPlayers) {
+    if (res.rows.length === 0) {
       await db.execute({
-        sql: 'INSERT OR IGNORE INTO plantel_jugador (id_equipo, nombre) VALUES (?, ?)',
-        args: [team.id_equipo, p],
+        sql: 'INSERT INTO equipo (nombre, id_juego) VALUES (?, ?)',
+        args: [header, idJuego],
       });
+      createdCount++;
     }
-
-    const updated = await db.execute({
-      sql: 'SELECT id_plantel_jugador, nombre, dorsal, posicion FROM plantel_jugador WHERE id_equipo = ? ORDER BY nombre ASC',
-      args: [teamId],
-    });
-    return updated.rows;
-  } catch (err) {
-    console.error('Error sincronizando plantel para equipo', teamId, err);
-    return [];
   }
+
+  console.log(`Equipos cargados/creados desde PES6: ${createdCount}`);
+  return createdCount;
 }
 
 // Ejecutar directamente si es llamado vía CLI
 if (process.argv[1] && process.argv[1].endsWith('sync-rosters.js')) {
-  syncUsedTeamRosters()
+  populateAllPES6Teams(1)
+    .then(() => syncUsedTeamRosters())
     .then(() => process.exit(0))
     .catch((err) => {
-      console.error('Error al sincronizar planteles:', err);
+      console.error('Error al sincronizar:', err);
       process.exit(1);
     });
 }
