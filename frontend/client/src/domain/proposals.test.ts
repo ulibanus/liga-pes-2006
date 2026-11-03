@@ -124,6 +124,37 @@ describe("domain/proposals - validateProposal", () => {
     const result = validateProposal(state, { availableRounds: [1] });
     assert.equal(result.isValid, true);
   });
+
+  it("fails when a scorer is suspended for the specified round", () => {
+    const previousMatch: Match = {
+      id: "prev1",
+      playerAId: "1",
+      playerBId: "3",
+      goalsA: 1,
+      goalsB: 0,
+      played: true,
+      round: 1,
+      scorers: [],
+      redCards: [{ playerName: "Verón", playerId: "1" }],
+    };
+
+    const state: ProposalFormState = {
+      ...baseValidState,
+      goalsA: 1,
+      goalsB: 0,
+      roundNumber: 2,
+      scorers: [{ id: "s1", virtualPlayer: "Verón", playerId: "1", amount: 1 }],
+      redCards: [],
+    };
+
+    const result = validateProposal(state, {
+      availableRounds: [2],
+      matches: [previousMatch],
+    });
+
+    assert.equal(result.isValid, false);
+    assert.match(result.errors.scorers ?? "", /suspendido por expulsión/);
+  });
 });
 
 describe("domain/proposals - findPendingRoundsForPair", () => {

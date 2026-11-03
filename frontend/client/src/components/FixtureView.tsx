@@ -154,6 +154,24 @@ export const FixtureView: React.FC<FixtureViewProps> = ({
                               </span>
                             </div>
                             <span className="team-name">{match.teamAName}</span>
+                            {match.suspendedPlayersA && match.suspendedPlayersA.length > 0 && (
+                              <div
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  fontSize: "0.75rem",
+                                  color: "#ef4444",
+                                  backgroundColor: "rgba(239, 68, 68, 0.1)",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  marginTop: "4px",
+                                }}
+                                title={`Jugadores suspendidos para esta fecha: ${match.suspendedPlayersA.join(", ")}`}
+                              >
+                                <span>🟥 Suspendido: {match.suspendedPlayersA.join(", ")}</span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="match-center">
@@ -186,6 +204,24 @@ export const FixtureView: React.FC<FixtureViewProps> = ({
                               </span>
                             </div>
                             <span className="team-name">{match.teamBName}</span>
+                            {match.suspendedPlayersB && match.suspendedPlayersB.length > 0 && (
+                              <div
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  fontSize: "0.75rem",
+                                  color: "#ef4444",
+                                  backgroundColor: "rgba(239, 68, 68, 0.1)",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  marginTop: "4px",
+                                }}
+                                title={`Jugadores suspendidos para esta fecha: ${match.suspendedPlayersB.join(", ")}`}
+                              >
+                                <span>🟥 Suspendido: {match.suspendedPlayersB.join(", ")}</span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="match-status">

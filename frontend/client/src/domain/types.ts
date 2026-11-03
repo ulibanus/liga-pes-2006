@@ -153,6 +153,8 @@ export interface FixtureMatch {
   played: boolean;
   goalsA: number | null;
   goalsB: number | null;
+  suspendedPlayersA?: string[];
+  suspendedPlayersB?: string[];
 }
 
 export interface FixtureRound {

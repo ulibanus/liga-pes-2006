@@ -9,6 +9,7 @@ import {
   validateProposal,
   mapProposalInputToPayload,
 } from "../domain/proposals";
+import { getSuspensionsForPlayer } from "../domain/suspensions";
 import { submitProposal, type ProposalDto } from "../services/api";
 import { UserAvatar } from "./UserAvatar";
 
@@ -87,6 +88,17 @@ export function ProposalForm({
     }
     return pendingRounds.length > 0 ? pendingRounds[0] : null;
   }, [formState.roundNumber, pendingRounds]);
+
+  const activeSuspensions = useMemo(() => {
+    if (!activeRoundNumber) return [];
+    const suspA = formState.playerAId
+      ? getSuspensionsForPlayer(matches, formState.playerAId, activeRoundNumber)
+      : [];
+    const suspB = formState.playerBId
+      ? getSuspensionsForPlayer(matches, formState.playerBId, activeRoundNumber)
+      : [];
+    return [...suspA, ...suspB];
+  }, [matches, formState.playerAId, formState.playerBId, activeRoundNumber]);
 
   const handlePlayerAChange = (newId: string) => {
     setFormState((prev) => {
@@ -190,6 +202,7 @@ export function ProposalForm({
 
     const validation = validateProposal(stateToSubmit, {
       availableRounds: pendingRounds,
+      matches,
     });
 
     if (!validation.isValid) {
@@ -414,6 +427,32 @@ export function ProposalForm({
           <span className="field-error-text" style={{ display: "block", marginTop: "-12px", marginBottom: "16px" }}>
             {validationErrors.players}
           </span>
+        )}
+
+        {activeSuspensions.length > 0 && (
+          <div
+            style={{
+              padding: "10px 14px",
+              backgroundColor: "rgba(239, 68, 68, 0.08)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              borderRadius: "6px",
+              marginBottom: "16px",
+              fontSize: "0.85rem",
+              color: "#f87171",
+            }}
+          >
+            <strong>🟥 Jugadores suspendidos para esta fecha:</strong>
+            <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+              {activeSuspensions.map((s, idx) => {
+                const owner = playerMap.get(s.playerId);
+                return (
+                  <li key={idx}>
+                    <strong>{s.virtualPlayer}</strong> ({owner ? owner.name : "Participante"}): no puede ser alineado por expulsión en la fecha {s.redCardRound}.
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
 
         {/* Fecha / Fixture */}

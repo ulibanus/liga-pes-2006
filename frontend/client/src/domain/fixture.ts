@@ -1,4 +1,5 @@
 import type { Player, Team, Match, FixtureRound, FixtureMatch } from "./types";
+import { getSuspensionsForPlayer } from "./suspensions.ts";
 
 /**
  * Generates round-robin pairings for a list of player IDs using the Berger/Polygon method.
@@ -125,6 +126,9 @@ export function buildFixture(
           goalsB: isAHome ? playedMatch.goalsB : playedMatch.goalsA,
         });
       } else {
+        const suspendedA = idA ? getSuspensionsForPlayer(matches, idA, roundNumber).map((s) => s.virtualPlayer) : [];
+        const suspendedB = idB ? getSuspensionsForPlayer(matches, idB, roundNumber).map((s) => s.virtualPlayer) : [];
+
         roundMatches.push({
           playerAId: idA,
           playerAName: playerA ? playerA.name : "Desconocido",
@@ -140,6 +144,8 @@ export function buildFixture(
           played: false,
           goalsA: null,
           goalsB: null,
+          suspendedPlayersA: suspendedA,
+          suspendedPlayersB: suspendedB,
         });
       }
     }
