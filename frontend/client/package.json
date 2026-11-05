@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "node --test src/domain/proposals.test.ts src/domain/sorteo.test.ts src/domain/knockout.test.ts",
+    "test": "node --test src/domain/proposals.test.ts src/domain/sorteo.test.ts src/domain/knockout.test.ts src/domain/suspensions.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

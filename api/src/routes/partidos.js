@@ -61,6 +61,8 @@ router.post('/', requireAuth, async (req, res, next) => {
       penales_local,
       penales_visitante,
       siguiente_partido_id,
+      goleadores,
+      rojas,
     } = req.body;
 
     const allowed = await canManageTournament(req.user, id_torneo, db);
@@ -136,6 +138,8 @@ router.put('/:id', requireAuth, async (req, res, next) => {
       penales_local,
       penales_visitante,
       siguiente_partido_id,
+      goleadores,
+      rojas,
     } = req.body;
 
     const matchRes = await db.execute({
@@ -190,6 +194,45 @@ router.put('/:id', requireAuth, async (req, res, next) => {
 
     if (estado !== 'pendiente' && goles_local !== undefined && goles_visitante !== undefined) {
       await settleMatchProde(db, req.params.id, goles_local, goles_visitante);
+    }
+
+    // Si se enviaron goleadores o rojas para actualizar el partido:
+    if (Array.isArray(goleadores) || Array.isArray(rojas)) {
+      await db.execute({
+        sql: 'DELETE FROM incidencia WHERE id_partido = ?',
+        args: [req.params.id],
+      });
+
+      if (Array.isArray(goleadores)) {
+        for (const g of goleadores) {
+          const playerName = typeof g === 'string' ? g : (g.jugador || g.virtualPlayer || g.scorerName || '');
+          const personId = typeof g === 'object' ? (g.personaId || g.playerId || id_local) : id_local;
+          const count = typeof g === 'object' && Number(g.cantidad || g.amount) > 0 ? Number(g.cantidad || g.amount) : 1;
+          for (let i = 0; i < count; i++) {
+            if (playerName.trim()) {
+              await db.execute({
+                sql: `INSERT INTO incidencia (jugador_virtual, tipo, id_persona, id_partido)
+                      VALUES (?, 'G', ?, ?)`,
+                args: [playerName.trim(), personId, req.params.id],
+              });
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(rojas)) {
+        for (const r of rojas) {
+          const playerName = typeof r === 'string' ? r : (r.jugador || r.virtualPlayer || r.playerName || '');
+          const personId = typeof r === 'object' ? (r.personaId || r.playerId || id_local) : id_local;
+          if (playerName.trim()) {
+            await db.execute({
+              sql: `INSERT INTO incidencia (jugador_virtual, tipo, id_persona, id_partido)
+                    VALUES (?, 'R', ?, ?)`,
+              args: [playerName.trim(), personId, req.params.id],
+            });
+          }
+        }
+      }
     }
 
     res.json({

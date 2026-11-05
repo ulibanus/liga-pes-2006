@@ -1,5 +1,6 @@
 import type { Player, Match } from "./types";
 import { generatePairings } from "./fixture.ts";
+import { isVirtualPlayerSuspended } from "./suspensions.ts";
 
 export interface ProposalScorerItem {
   id: string;
@@ -116,6 +117,7 @@ export function validateProposal(
   state: ProposalFormState,
   options?: {
     availableRounds?: number[];
+    matches?: Match[];
   }
 ): ProposalValidationResult {
   const errors: ProposalValidationErrors = {};
@@ -180,6 +182,15 @@ export function validateProposal(
       break;
     }
 
+    if (
+      options?.matches &&
+      state.roundNumber &&
+      isVirtualPlayerSuspended(options.matches, s.playerId, s.virtualPlayer, state.roundNumber)
+    ) {
+      errors.scorers = `El jugador virtual "${s.virtualPlayer.trim()}" está suspendido por expulsión para esta fecha y no puede ser alineado.`;
+      break;
+    }
+
     if (s.playerId === state.playerAId) {
       sumScorersA += s.amount;
       hasScorersA = true;
@@ -214,6 +225,15 @@ export function validateProposal(
     }
     if (r.playerId !== state.playerAId && r.playerId !== state.playerBId) {
       errors.redCards = "Las tarjetas rojas deben pertenecer a uno de los dos participantes.";
+      break;
+    }
+
+    if (
+      options?.matches &&
+      state.roundNumber &&
+      isVirtualPlayerSuspended(options.matches, r.playerId, r.virtualPlayer, state.roundNumber)
+    ) {
+      errors.redCards = `El jugador virtual "${r.virtualPlayer.trim()}" ya está suspendido para esta fecha y no pudo haber jugado.`;
       break;
     }
   }

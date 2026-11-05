@@ -1,4 +1,5 @@
 import type { Player, Team, Match, FixtureRound, FixtureMatch } from "./types";
+import { getSuspensionsForPlayer } from "./suspensions.ts";
 
 /**
  * Generates round-robin pairings for a list of player IDs using the Berger/Polygon method.
@@ -109,6 +110,7 @@ export function buildFixture(
       if (playedMatch && playedMatch.played) {
         const isAHome = playedMatch.playerAId === idA;
         roundMatches.push({
+          matchId: playedMatch.id,
           playerAId: idA,
           playerAName: playerA ? playerA.name : "Desconocido",
           teamAName: playerA ? teamMap.get(playerA.teamId) || "Sin Equipo" : "",
@@ -123,8 +125,13 @@ export function buildFixture(
           played: true,
           goalsA: isAHome ? playedMatch.goalsA : playedMatch.goalsB,
           goalsB: isAHome ? playedMatch.goalsB : playedMatch.goalsA,
+          scorers: playedMatch.scorers,
+          redCards: playedMatch.redCards,
         });
       } else {
+        const suspendedA = idA ? getSuspensionsForPlayer(matches, idA, roundNumber).map((s) => s.virtualPlayer) : [];
+        const suspendedB = idB ? getSuspensionsForPlayer(matches, idB, roundNumber).map((s) => s.virtualPlayer) : [];
+
         roundMatches.push({
           playerAId: idA,
           playerAName: playerA ? playerA.name : "Desconocido",
@@ -140,6 +147,8 @@ export function buildFixture(
           played: false,
           goalsA: null,
           goalsB: null,
+          suspendedPlayersA: suspendedA,
+          suspendedPlayersB: suspendedB,
         });
       }
     }
@@ -151,6 +160,20 @@ export function buildFixture(
       });
     }
   });
+
+  // Pasada final: recalculamos las suspensiones pasando la estructura completa del fixtureRounds ya generada
+  for (const fr of fixtureRounds) {
+    for (const fm of fr.matches) {
+      if (!fm.played && !fm.isBye) {
+        fm.suspendedPlayersA = fm.playerAId
+          ? getSuspensionsForPlayer(matches, fm.playerAId, fr.roundNumber, 2, fixtureRounds).map((s) => s.virtualPlayer)
+          : [];
+        fm.suspendedPlayersB = fm.playerBId
+          ? getSuspensionsForPlayer(matches, fm.playerBId, fr.roundNumber, 2, fixtureRounds).map((s) => s.virtualPlayer)
+          : [];
+      }
+    }
+  }
 
   return fixtureRounds;
 }

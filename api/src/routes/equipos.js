@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { syncSingleTeam } from '../services/sync-rosters.js';
 
 const router = Router();
 
@@ -38,6 +39,25 @@ router.get('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Equipo not found' });
     }
     res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /equipos/:id/plantel - Obtiene la lista de jugadores de este club
+router.get('/:id/plantel', async (req, res, next) => {
+  try {
+    let result = await db.execute({
+      sql: 'SELECT id_plantel_jugador, nombre, dorsal, posicion FROM plantel_jugador WHERE id_equipo = ? ORDER BY nombre ASC',
+      args: [req.params.id],
+    });
+    if (result.rows.length === 0) {
+      const synced = await syncSingleTeam(req.params.id);
+      if (synced && synced.length > 0) {
+        return res.json(synced);
+      }
+    }
+    res.json(result.rows);
   } catch (err) {
     next(err);
   }
